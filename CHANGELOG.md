@@ -1,5 +1,27 @@
 # Changelog
 
+## Lightory initial OpenCode fork
+
+### Added
+
+- Added an OpenCode hooks-only provider that normalizes OpenCode session, tool,
+  permission, and idle events into the shared Pixel Agents `AgentEvent` model.
+- Added a project-level OpenCode plugin at
+  `.opencode/plugins/pixel-agents-opencode.ts`.
+- Added standalone CLI provider selection with `--provider opencode` as the
+  default and `--provider claude` retained for comparison.
+- Added desktop shell contract files under `desktop-shell/` for a future Tauri
+  or Electron wrapper.
+- Added product and architecture docs for OpenCode web/desktop and separate
+  mobile/pad app designs.
+- Added unit coverage for the OpenCode provider.
+
+### Changed
+
+- Renamed package metadata to `pixel-agents-opencode` /
+  `Pixel Agents for OpenCode`.
+- Updated the README to describe the Lightory/OpenCode standalone workflow.
+
 ## v1.3.0
 
 ### Features

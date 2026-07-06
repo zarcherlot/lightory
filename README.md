@@ -5,7 +5,7 @@
 </h1>
 
 <h2 align="center" style="padding-bottom: 20px;">
-  The game interface where AI agents build real things
+  Lightory: Pixel Agents for OpenCode
 </h2>
 
 <div align="center" style="margin-top: 25px;">
@@ -23,6 +23,36 @@
 </div>
 
 <br/>
+
+## Lightory OpenCode Fork
+
+Lightory is an OpenCode-focused fork of Pixel Agents. It turns AI coding sessions
+into something you can see and manage: each agent becomes a character in a pixel
+art office, with live status for tool use, permissions, and idle/waiting states.
+
+This fork currently targets standalone desktop/browser use:
+
+- **Browser Web UI** - `node dist/cli.js --provider opencode` starts a local
+  Fastify server and serves the office at `http://127.0.0.1:3100`.
+- **OpenCode plugin hooks** - `.opencode/plugins/pixel-agents-opencode.ts`
+  forwards OpenCode session, tool, permission, and idle events into the local
+  server.
+- **Desktop shell-ready** - `desktop-shell/contract.ts` reserves the
+  process/WebView boundary for a future Tauri or Electron wrapper.
+
+IDE WebView and TUI surfaces are intentionally out of scope for this fork's
+first phase. Mobile and pad apps are treated as separate product surfaces; see
+[docs/mobile-pad-app-design.md](docs/mobile-pad-app-design.md).
+
+## Upstream
+
+This project is based on
+[pixel-agents-hq/pixel-agents](https://github.com/pixel-agents-hq/pixel-agents).
+The original project focuses on Claude Code and VS Code extension workflows.
+This fork keeps the shared server/webview architecture and adds an OpenCode
+hooks-only provider.
+
+## Original Pixel Agents Overview
 
 Pixel Agents turns multi-agent AI systems into something you can actually see and manage. Each agent becomes a character in a pixel art office. They walk around, sit at their desk, and visually reflect what they are doing — typing when writing code, reading when searching files, waiting when it needs your attention.
 
@@ -53,32 +83,52 @@ Internally, the architecture is fully agent-agnostic and platform-agnostic: a ty
 
 ## Requirements
 
-- VS Code 1.105.0 or later
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and configured
+- Node.js and npm
+- [OpenCode](https://opencode.ai/) installed and configured
 - **Platform**: Windows, Linux, and macOS are supported
+- Optional: VS Code 1.105.0 or later if you are working on the inherited
+  extension surface
 
 ## Getting Started
 
-If you just want to use Pixel Agents, the easiest way is to download the [VS Code extension](https://marketplace.visualstudio.com/items?itemName=pablodelucca.pixel-agents). If you want to play with the code, develop, or contribute, then:
-
-### Install from source
+### OpenCode standalone
 
 ```bash
-git clone https://github.com/pixel-agents-hq/pixel-agents.git
-cd pixel-agents
+git clone https://github.com/zarcherlot/lightory.git
+cd lightory
+npm install
+npm run build:webview
+node esbuild.js --production
+node dist/cli.js --provider opencode --port 3100
+```
+
+Open `http://127.0.0.1:3100`.
+
+For sessions launched inside this repository, OpenCode automatically loads the
+project plugin at `.opencode/plugins/pixel-agents-opencode.ts`. For global use,
+copy or symlink that plugin into your global OpenCode plugin directory.
+
+### Development from source
+
+```bash
+git clone https://github.com/zarcherlot/lightory.git
+cd lightory
 npm install      # npm workspaces installs root + server + webview-ui in one shot
 npm run build
 ```
 
-Then press **F5** in VS Code to launch the Extension Development Host.
+The inherited VS Code extension development flow still exists for upstream
+compatibility. Press **F5** in VS Code to launch the Extension Development Host.
 
 To try the **standalone CLI** locally:
 
 ```bash
-node dist/cli.js                 # or npx pixel-agents [--port 3100] after publish
+node dist/cli.js --provider opencode --port 3100
 ```
 
-It starts the Fastify server, opens the webview SPA at `http://localhost:3100`, and (in the same `~/.pixel-agents/` namespace) shares your hooks and layout with the VS Code extension if both are running.
+It starts the Fastify server and serves the webview SPA at
+`http://127.0.0.1:3100`. Server discovery for hooks is written to
+`~/.pixel-agents/server.json`.
 
 ### Browser Preview & Hosted Reports
 
@@ -129,7 +179,12 @@ Characters are based on the amazing work of [JIK-A-4, Metro City](https://jik-a-
 
 ## How It Works
 
-Pixel Agents has two parallel detection paths:
+Pixel Agents has provider-specific detection paths:
+
+- **OpenCode hooks-only mode** - OpenCode plugin hooks POST events
+  (`session.created`, `tool.execute.before`, `tool.execute.after`,
+  `permission.asked`, `session.idle`, and related events) to
+  `POST /api/hooks/opencode`. No transcript file is required.
 
 - **Hooks mode** (preferred) — Claude Code's official Hooks API POSTs events (`SessionStart`, `PreToolUse`, `Notification`, `Stop`, etc.) to a local Fastify server (`POST /api/hooks/:providerId`). Instant, reliable. Server discovery via `~/.pixel-agents/server.json`.
 - **Heuristic mode** (fallback) — Polls JSONL transcript files at `~/.claude/projects/<project-hash>/<session-id>.jsonl`. Used when hooks aren't installed.
@@ -145,7 +200,10 @@ No modifications to Claude Code are needed — Pixel Agents is purely observatio
 Four-package monorepo, npm workspaces:
 
 - **`core/`** — TypeScript-only protocol + interfaces (AsyncAPI 3.0 contract, `HookProvider`, `MessageTransport`, `StateAdapter`). Zero runtime side effects.
-- **`server/`** — Fastify v5 (HTTP + WebSocket), Vitest. Owns `AgentRuntime`, `AgentStateStore`, `SessionRouter`, `DismissalTracker`, file watching, transcript parsing, providers. Ships the `npx pixel-agents` CLI.
+- **`server/`** — Fastify v5 (HTTP + WebSocket), Vitest. Owns `AgentRuntime`, `AgentStateStore`, `SessionRouter`, `DismissalTracker`, file watching, transcript parsing, providers. Ships the standalone CLI.
+- **`.opencode/plugins/`** - Project-level OpenCode plugin that forwards
+  OpenCode lifecycle events to the local server.
+- **`desktop-shell/`** - Reserved interface for a future native WebView shell.
 - **`adapters/vscode/`** — VS Code Extension API. Composes `core/` + `server/` for the desktop surface.
 - **`webview-ui/`** — React 19, Vite, Canvas 2D. Transport-agnostic (`PostMessageTransport` in VS Code, `WebSocketTransport` in the browser).
 
