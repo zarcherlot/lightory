@@ -414,7 +414,7 @@ export class HookEventHandler {
     const toolName = normEvent.toolName;
     const toolInput = (normEvent.input as Record<string, unknown> | undefined) ?? {};
     const status = this.provider.formatToolStatus(toolName, toolInput);
-    const hookToolId = `hook-${Date.now()}`;
+    const hookToolId = normEvent.toolId || `hook-${Date.now()}`;
 
     // Track for PostToolUse/SubagentStart correlation (always, even if suppressed below).
     // currentHookIsTeammateSpawn is the authoritative teammate-vs-subagent discriminator.

@@ -96,7 +96,7 @@ export class AgentRuntime {
     this.hookEventHandler.setLifecycleCallbacks({
       onExternalSessionDetected: (sessionId, transcriptPath, cwd) => {
         const projectDir = transcriptPath ? path.dirname(transcriptPath) : cwd;
-        if (!isTrackedProjectDir(projectDir) && !this.watchAllSessions.current) {
+        if (!this.shouldTrackExternalHookSession(projectDir, cwd)) {
           return;
         }
         adoptExternalSessionFromHook(
@@ -176,6 +176,27 @@ export class AgentRuntime {
         }
       },
     });
+  }
+
+  private shouldTrackExternalHookSession(
+    projectDir: string,
+    cwd: string,
+  ): boolean {
+    if (this.watchAllSessions.current || isTrackedProjectDir(projectDir)) {
+      return true;
+    }
+
+    // Hook payloads carry the actual CLI cwd. For providers such as Codex, the
+    // transcript directory may live outside the project and never seed fileWatcher's
+    // tracked project set. In standalone mode the CLI cwd is authoritative.
+    const hookCwd = cwd || projectDir;
+    if (hookCwd) {
+      const root = path.resolve(process.cwd()).toLowerCase();
+      const candidate = path.resolve(hookCwd).toLowerCase();
+      return candidate === root || candidate.startsWith(`${root}${path.sep}`);
+    }
+
+    return false;
   }
 
   /** Register adapter-specific lifecycle callbacks. */
