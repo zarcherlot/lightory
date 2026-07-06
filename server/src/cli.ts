@@ -22,7 +22,12 @@ import {
 } from './assetLoader.js';
 import type { AssetCache } from './clientMessageHandler.js';
 import { FileStateAdapter } from './fileStateAdapter.js';
-import { claudeProvider, copyHookScript, opencodeProvider } from './providers/index.js';
+import {
+  claudeProvider,
+  codexProvider,
+  copyHookScript,
+  opencodeProvider,
+} from './providers/index.js';
 import { PixelAgentsServer } from './server.js';
 
 // ── Argument parsing ──────────────────────────────────────────
@@ -30,7 +35,7 @@ import { PixelAgentsServer } from './server.js';
 interface CliArgs {
   port: number;
   host: string;
-  provider: 'opencode' | 'claude';
+  provider: 'opencode' | 'claude' | 'codex';
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -44,8 +49,8 @@ function parseArgs(argv: string[]): CliArgs {
       i++;
     } else if (argv[i] === '--provider' && argv[i + 1]) {
       const provider = argv[i + 1];
-      if (provider !== 'opencode' && provider !== 'claude') {
-        throw new Error(`Unsupported provider "${provider}". Use "opencode" or "claude".`);
+      if (provider !== 'opencode' && provider !== 'claude' && provider !== 'codex') {
+        throw new Error(`Unsupported provider "${provider}". Use "opencode", "claude", or "codex".`);
       }
       args.provider = provider;
       i++;
@@ -55,7 +60,7 @@ function parseArgs(argv: string[]): CliArgs {
 Options:
   --port, -p <number>   Port to listen on (default: 3100)
   --host <string>       Host to bind to (default: 127.0.0.1)
-  --provider <name>      Agent provider: opencode or claude (default: opencode)
+  --provider <name>      Agent provider: opencode, claude, or codex (default: opencode)
   --help                Show this help message`);
       process.exit(0);
     }
@@ -67,7 +72,12 @@ Options:
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
-  const provider = args.provider === 'claude' ? claudeProvider : opencodeProvider;
+  const provider =
+    args.provider === 'claude'
+      ? claudeProvider
+      : args.provider === 'codex'
+        ? codexProvider
+        : opencodeProvider;
 
   // dist/ contains both the CLI bundle and the assets/ + webview/ directories
   const distRoot = __dirname;

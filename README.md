@@ -5,7 +5,7 @@
 </h1>
 
 <h2 align="center" style="padding-bottom: 20px;">
-  Lightory: Pixel Agents for OpenCode
+  Lightory: Pixel Agents for OpenCode and Codex
 </h2>
 
 <div align="center" style="margin-top: 25px;">
@@ -24,19 +24,23 @@
 
 <br/>
 
-## Lightory OpenCode Fork
+## Lightory OpenCode and Codex Fork
 
-Lightory is an OpenCode-focused fork of Pixel Agents. It turns AI coding sessions
-into something you can see and manage: each agent becomes a character in a pixel
-art office, with live status for tool use, permissions, and idle/waiting states.
+Lightory is an OpenCode- and Codex-focused fork of Pixel Agents. It turns AI
+coding sessions into something you can see and manage: each agent becomes a
+character in a pixel art office, with live status for tool use, permissions, and
+idle/waiting states.
 
 This fork currently targets standalone desktop/browser use:
 
-- **Browser Web UI** - `node dist/cli.js --provider opencode` starts a local
-  Fastify server and serves the office at `http://127.0.0.1:3100`.
+- **Browser Web UI** - `node dist/cli.js --provider opencode` or
+  `node dist/cli.js --provider codex` starts a local Fastify server and serves
+  the office at `http://127.0.0.1:3100`.
 - **OpenCode plugin hooks** - `.opencode/plugins/pixel-agents-opencode.ts`
   forwards OpenCode session, tool, permission, and idle events into the local
   server.
+- **Codex hook provider** - `POST /api/hooks/codex` accepts Codex-shaped session,
+  tool, permission, and turn events and normalizes them into the shared runtime.
 - **Desktop shell-ready** - `desktop-shell/contract.ts` reserves the
   process/WebView boundary for a future Tauri or Electron wrapper.
 
@@ -49,8 +53,8 @@ first phase. Mobile and pad apps are treated as separate product surfaces; see
 This project is based on
 [pixel-agents-hq/pixel-agents](https://github.com/pixel-agents-hq/pixel-agents).
 The original project focuses on Claude Code and VS Code extension workflows.
-This fork keeps the shared server/webview architecture and adds an OpenCode
-hooks-only provider.
+This fork keeps the shared server/webview architecture and adds OpenCode and
+Codex hooks-only providers.
 
 ## Original Pixel Agents Overview
 
@@ -84,7 +88,8 @@ Internally, the architecture is fully agent-agnostic and platform-agnostic: a ty
 ## Requirements
 
 - Node.js and npm
-- [OpenCode](https://opencode.ai/) installed and configured
+- [OpenCode](https://opencode.ai/) installed and configured for OpenCode sessions
+- Codex installed and configured for Codex sessions
 - **Platform**: Windows, Linux, and macOS are supported
 - Optional: VS Code 1.105.0 or later if you are working on the inherited
   extension surface
@@ -108,6 +113,31 @@ For sessions launched inside this repository, OpenCode automatically loads the
 project plugin at `.opencode/plugins/pixel-agents-opencode.ts`. For global use,
 copy or symlink that plugin into your global OpenCode plugin directory.
 
+### Codex standalone
+
+```bash
+git clone https://github.com/zarcherlot/lightory.git
+cd lightory
+npm install
+npm run build:webview
+node esbuild.js --production
+node dist/cli.js --provider codex --port 3100
+```
+
+Open `http://127.0.0.1:3100`.
+
+The Codex provider is hooks-only. Configure Codex to POST JSON hook events to:
+
+```text
+POST http://127.0.0.1:3100/api/hooks/codex
+Authorization: Bearer <token from ~/.pixel-agents/server.json>
+```
+
+The provider accepts common session, tool, permission, and turn event shapes such
+as `session.started`, `tool.start`, `tool.completed`, `permission.requested`,
+`turn.idle`, and `turn.completed`. Use `server/manual-hook-events.http` for
+manual request examples.
+
 ### Development from source
 
 ```bash
@@ -124,6 +154,8 @@ To try the **standalone CLI** locally:
 
 ```bash
 node dist/cli.js --provider opencode --port 3100
+# or
+node dist/cli.js --provider codex --port 3100
 ```
 
 It starts the Fastify server and serves the webview SPA at
@@ -186,6 +218,12 @@ Pixel Agents has provider-specific detection paths:
   `permission.asked`, `session.idle`, and related events) to
   `POST /api/hooks/opencode`. No transcript file is required.
 
+- **Codex hooks-only mode** - Codex hook events POST to
+  `POST /api/hooks/codex`. The provider normalizes common Codex-shaped session
+  events (`session.started`, `session.end`), tool events (`tool.start`,
+  `tool.completed`), permission events, and turn state events into the same
+  canonical `AgentEvent` stream. No transcript file is required.
+
 - **Hooks mode** (preferred) — Claude Code's official Hooks API POSTs events (`SessionStart`, `PreToolUse`, `Notification`, `Stop`, etc.) to a local Fastify server (`POST /api/hooks/:providerId`). Instant, reliable. Server discovery via `~/.pixel-agents/server.json`.
 - **Heuristic mode** (fallback) — Polls JSONL transcript files at `~/.claude/projects/<project-hash>/<session-id>.jsonl`. Used when hooks aren't installed.
 
@@ -203,6 +241,8 @@ Four-package monorepo, npm workspaces:
 - **`server/`** — Fastify v5 (HTTP + WebSocket), Vitest. Owns `AgentRuntime`, `AgentStateStore`, `SessionRouter`, `DismissalTracker`, file watching, transcript parsing, providers. Ships the standalone CLI.
 - **`.opencode/plugins/`** - Project-level OpenCode plugin that forwards
   OpenCode lifecycle events to the local server.
+- **`server/src/providers/hook/codex/`** - Codex hooks provider that adapts
+  Codex-shaped events to the shared `HookProvider` boundary.
 - **`desktop-shell/`** - Reserved interface for a future native WebView shell.
 - **`adapters/vscode/`** — VS Code Extension API. Composes `core/` + `server/` for the desktop surface.
 - **`webview-ui/`** — React 19, Vite, Canvas 2D. Transport-agnostic (`PostMessageTransport` in VS Code, `WebSocketTransport` in the browser).
