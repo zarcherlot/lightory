@@ -94,6 +94,12 @@ function makeHookEntry(): ClaudeHookEntry {
   };
 }
 
+function resolveBundledHookScript(rootPath: string): string {
+  const extensionBundlePath = path.join(rootPath, 'dist', 'hooks', CLAUDE_HOOK_SCRIPT_NAME);
+  if (fs.existsSync(extensionBundlePath)) return extensionBundlePath;
+  return path.join(rootPath, 'hooks', CLAUDE_HOOK_SCRIPT_NAME);
+}
+
 /** Check if Pixel Agents hooks are already installed in ~/.claude/settings.json. */
 export function areHooksInstalled(): boolean {
   const settings = readClaudeSettings();
@@ -169,7 +175,7 @@ export function uninstallHooks(): void {
 
 /** Copy the shipped hook script from the extension to ~/.pixel-agents/hooks/ */
 export function copyHookScript(extensionPath: string): void {
-  const src = path.join(extensionPath, 'dist', 'hooks', CLAUDE_HOOK_SCRIPT_NAME);
+  const src = resolveBundledHookScript(extensionPath);
   const dst = getHookScriptPath();
   const dstDir = path.dirname(dst);
 

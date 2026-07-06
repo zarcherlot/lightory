@@ -63,11 +63,11 @@ For OpenCode sessions launched from this repository, the project-level plugin at
 For global usage, copy or symlink that plugin into the user's global OpenCode
 plugin directory.
 
-For Codex sessions, configure hooks to POST JSON events to
-`/api/hooks/codex` with the bearer token from `~/.pixel-agents/server.json`.
-The provider accepts common event names such as `session.started`,
-`tool.start`, `tool.completed`, `permission.requested`, `turn.idle`, and
-`turn.completed`.
+For Codex sessions, the standalone server installs a managed hook block into
+`~/.codex/config.toml` and copies `codex-hook.js` to
+`~/.pixel-agents/hooks/`. Codex will ask the user to review/trust those hooks on
+the next interactive startup. The provider accepts Codex CLI hook payloads such
+as `SessionStart`, `PreToolUse`, `PostToolUse`, `PermissionRequest`, and `Stop`.
 
 ## Desktop Shell
 

@@ -5,6 +5,11 @@ import {
   BASH_COMMAND_DISPLAY_MAX_LENGTH,
   TASK_DESCRIPTION_DISPLAY_MAX_LENGTH,
 } from '../../../constants.js';
+import {
+  areHooksInstalled as installerAreHooksInstalled,
+  installHooks as installerInstallHooks,
+  uninstallHooks as installerUninstallHooks,
+} from './codexHookInstaller.js';
 
 type NormalizedHook = { sessionId: string; event: AgentEvent };
 
@@ -41,7 +46,17 @@ function getTool(raw: Record<string, unknown>): { id: string; name: string; inpu
 
   return {
     id:
-      firstString(raw.tool_id, raw.toolId, raw.call_id, raw.callId, tool.id, call.id, action.id) ??
+      firstString(
+        raw.tool_id,
+        raw.toolId,
+        raw.tool_use_id,
+        raw.toolUseId,
+        raw.call_id,
+        raw.callId,
+        tool.id,
+        call.id,
+        action.id,
+      ) ??
       `hook-${Date.now()}`,
     name:
       firstString(raw.tool_name, raw.toolName, raw.name, tool.name, call.name, action.name) ?? 'tool',
@@ -194,17 +209,15 @@ export function formatToolStatus(toolName: string, input?: unknown): string {
 }
 
 async function installHooks(): Promise<void> {
-  console.log(
-    '[Pixel Agents] Codex provider is ready. Configure Codex hooks to POST JSON events to /api/hooks/codex using the server token.',
-  );
+  installerInstallHooks();
 }
 
 async function uninstallHooks(): Promise<void> {
-  console.log('[Pixel Agents] Remove the Codex hook entries that POST to /api/hooks/codex.');
+  installerUninstallHooks();
 }
 
 async function areHooksInstalled(): Promise<boolean> {
-  return false;
+  return installerAreHooksInstalled();
 }
 
 function buildLaunchCommand(

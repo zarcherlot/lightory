@@ -39,8 +39,10 @@ This fork currently targets standalone desktop/browser use:
 - **OpenCode plugin hooks** - `.opencode/plugins/pixel-agents-opencode.ts`
   forwards OpenCode session, tool, permission, and idle events into the local
   server.
-- **Codex hook provider** - `POST /api/hooks/codex` accepts Codex-shaped session,
-  tool, permission, and turn events and normalizes them into the shared runtime.
+- **Codex CLI hooks** - Lightory installs Codex lifecycle hooks into
+  `~/.codex/config.toml`, copies `codex-hook.js` into
+  `~/.pixel-agents/hooks/`, and forwards Codex session/tool/permission/turn
+  events into the local server.
 - **Desktop shell-ready** - `desktop-shell/contract.ts` reserves the
   process/WebView boundary for a future Tauri or Electron wrapper.
 
@@ -65,7 +67,7 @@ It ships in **two flavors from the same source tree**:
 - **VS Code extension** — `pablodelucca.pixel-agents` on the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=pablodelucca.pixel-agents) and [Open VSX](https://open-vsx.org/extension/pablodelucca/pixel-agents). Agents spawn into VS Code terminals; characters render in the panel area.
 - **Standalone CLI** — `npx pixel-agents` runs a local Fastify server and serves the office as a browser SPA. Useful in tmux workflows, remote sessions, or any environment without a desktop VS Code.
 
-Internally, the architecture is fully agent-agnostic and platform-agnostic: a typed `HookProvider` interface defines the integration boundary so adding a new AI tool is a single subdirectory of code. Claude Code is the reference implementation today; Codex, Gemini, Cursor, and others are on the roadmap.
+Internally, the architecture is fully agent-agnostic and platform-agnostic: a typed `HookProvider` interface defines the integration boundary so adding a new AI tool is a single subdirectory of code. Claude Code, OpenCode, and Codex are supported today; Gemini, Cursor, and others can be added through the same provider boundary.
 
 ![Pixel Agents screenshot](webview-ui/public/Screenshot.jpg)
 
@@ -126,17 +128,22 @@ node dist/cli.js --provider codex --port 3100
 
 Open `http://127.0.0.1:3100`.
 
-The Codex provider is hooks-only. Configure Codex to POST JSON hook events to:
+The Codex provider is hooks-only. When the server starts, it installs a managed
+block into `~/.codex/config.toml` and copies the hook script to
+`~/.pixel-agents/hooks/codex-hook.js`. Codex will ask you to review/trust the new
+hooks the next time it starts in an interactive session. For automation that has
+already vetted the hooks, Codex also supports `--dangerously-bypass-hook-trust`.
+
+The installed hook script forwards events to:
 
 ```text
 POST http://127.0.0.1:3100/api/hooks/codex
 Authorization: Bearer <token from ~/.pixel-agents/server.json>
 ```
 
-The provider accepts common session, tool, permission, and turn event shapes such
-as `session.started`, `tool.start`, `tool.completed`, `permission.requested`,
-`turn.idle`, and `turn.completed`. Use `server/manual-hook-events.http` for
-manual request examples.
+The provider accepts Codex CLI hook payloads such as `SessionStart`,
+`PreToolUse`, `PostToolUse`, `PermissionRequest`, and `Stop`. Use
+`server/manual-hook-events.http` for manual request examples.
 
 ### Development from source
 
@@ -218,11 +225,11 @@ Pixel Agents has provider-specific detection paths:
   `permission.asked`, `session.idle`, and related events) to
   `POST /api/hooks/opencode`. No transcript file is required.
 
-- **Codex hooks-only mode** - Codex hook events POST to
-  `POST /api/hooks/codex`. The provider normalizes common Codex-shaped session
-  events (`session.started`, `session.end`), tool events (`tool.start`,
-  `tool.completed`), permission events, and turn state events into the same
-  canonical `AgentEvent` stream. No transcript file is required.
+- **Codex hooks-only mode** - Codex lifecycle hooks installed in
+  `~/.codex/config.toml` run `~/.pixel-agents/hooks/codex-hook.js`, which POSTs
+  to `POST /api/hooks/codex`. The provider normalizes Codex CLI events such as
+  `SessionStart`, `PreToolUse`, `PostToolUse`, `PermissionRequest`, and `Stop`
+  into the same canonical `AgentEvent` stream. No transcript polling is required.
 
 - **Hooks mode** (preferred) — Claude Code's official Hooks API POSTs events (`SessionStart`, `PreToolUse`, `Notification`, `Stop`, etc.) to a local Fastify server (`POST /api/hooks/:providerId`). Instant, reliable. Server discovery via `~/.pixel-agents/server.json`.
 - **Heuristic mode** (fallback) — Polls JSONL transcript files at `~/.claude/projects/<project-hash>/<session-id>.jsonl`. Used when hooks aren't installed.

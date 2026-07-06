@@ -44,6 +44,24 @@ describe('codexProvider', () => {
     }
   });
 
+  it('normalizes Codex CLI tool_use_id fields', () => {
+    const result = codexProvider.normalizeHookEvent({
+      hook_event_name: 'PreToolUse',
+      session_id: 'sess-1',
+      tool_name: 'Bash',
+      tool_input: { command: 'pwd' },
+      tool_use_id: 'call-1',
+    });
+
+    expect(result?.sessionId).toBe('sess-1');
+    expect(result?.event.kind).toBe('toolStart');
+    if (result?.event.kind === 'toolStart') {
+      expect(result.event.toolId).toBe('call-1');
+      expect(result.event.toolName).toBe('Bash');
+      expect(result.event.input).toEqual({ command: 'pwd' });
+    }
+  });
+
   it('normalizes tool end events', () => {
     const result = codexProvider.normalizeHookEvent({
       event: 'tool.completed',

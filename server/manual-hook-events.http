@@ -149,7 +149,7 @@ Content-Type: application/json
 
 {
   "session_id": "{{sessionId}}",
-  "hook_event_name": "session.started",
+  "hook_event_name": "SessionStart",
   "cwd": "{{cwd}}"
 }
 
@@ -160,13 +160,11 @@ Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
-  "sessionId": "{{sessionId}}",
-  "type": "tool.start",
-  "tool": {
-    "id": "manual-tool-1",
-    "name": "exec_command"
-  },
-  "input": {
+  "session_id": "{{sessionId}}",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Bash",
+  "tool_use_id": "manual-tool-1",
+  "tool_input": {
     "command": "npm test"
   }
 }
@@ -178,7 +176,8 @@ Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
-  "sessionId": "{{sessionId}}",
-  "event": "tool.completed",
-  "toolId": "manual-tool-1"
+  "session_id": "{{sessionId}}",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Bash",
+  "tool_use_id": "manual-tool-1"
 }

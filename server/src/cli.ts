@@ -25,6 +25,7 @@ import { FileStateAdapter } from './fileStateAdapter.js';
 import {
   claudeProvider,
   codexProvider,
+  copyCodexHookScript,
   copyHookScript,
   opencodeProvider,
 } from './providers/index.js';
@@ -126,6 +127,8 @@ async function main(): Promise<void> {
         await provider.installHooks(`http://127.0.0.1:${currentConfig.port}`, currentConfig.token);
         if (provider.id === 'claude') {
           copyHookScript(distRoot);
+        } else if (provider.id === 'codex') {
+          copyCodexHookScript(distRoot);
         }
         console.log('[Pixel Agents] Hooks installed (user toggle)');
       } else {
@@ -156,6 +159,8 @@ async function main(): Promise<void> {
         await provider.installHooks(`http://127.0.0.1:${config.port}`, config.token);
         if (provider.id === 'claude') {
           copyHookScript(distRoot);
+        } else if (provider.id === 'codex') {
+          copyCodexHookScript(distRoot);
         }
         console.log(`[Pixel Agents] Hooks ready for ${provider.displayName}`);
       } catch (err) {
