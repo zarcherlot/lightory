@@ -1,8 +1,8 @@
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 
 import { CONFIG_FILE_NAME, LAYOUT_FILE_DIR } from './constants.js';
+import { getHomeDir } from './homeDir.js';
 
 export interface AdapterSettings {
   soundEnabled: boolean;
@@ -40,7 +40,7 @@ const DEFAULT_ADAPTER_SETTINGS: AdapterSettings = {
 };
 
 function getConfigFilePath(): string {
-  return path.join(os.homedir(), LAYOUT_FILE_DIR, CONFIG_FILE_NAME);
+  return path.join(getHomeDir(), LAYOUT_FILE_DIR, CONFIG_FILE_NAME);
 }
 
 /** Coerce a loose object into a valid AdapterSettings with defaults for missing/wrong-typed fields. */

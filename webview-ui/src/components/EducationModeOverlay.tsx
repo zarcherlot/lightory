@@ -48,6 +48,8 @@ export interface EducationConnectionPulse extends EducationConnection {
   pulseId: number;
 }
 
+export type EducationRunStatus = 'idle' | 'running' | 'pausing' | 'paused' | 'completed' | 'error';
+
 interface ErrorFeedback {
   id: number;
   text: string;
@@ -57,11 +59,15 @@ interface EducationModeOverlayProps {
   officeState: OfficeState;
   activeRoleIds: Set<string>;
   isEditMode: boolean;
+  runStatus: EducationRunStatus;
   containerRef: React.RefObject<HTMLDivElement | null>;
   zoom: number;
   panRef: React.RefObject<{ x: number; y: number }>;
   activeFlowConnections: EducationConnectionPulse[];
   onRunTeam: (connections: EducationConnection[]) => void;
+  onPauseRun: () => void;
+  onResumeRun: () => void;
+  onStopRun: () => void;
   onBackToEdit: () => void;
 }
 
@@ -69,11 +75,15 @@ export function EducationModeOverlay({
   officeState,
   activeRoleIds,
   isEditMode,
+  runStatus,
   containerRef,
   zoom,
   panRef,
   activeFlowConnections,
   onRunTeam,
+  onPauseRun,
+  onResumeRun,
+  onStopRun,
   onBackToEdit,
 }: EducationModeOverlayProps) {
   const [, setTick] = useState(0);
@@ -244,10 +254,23 @@ export function EducationModeOverlay({
     return `${target?.name ?? '这个角色'}暂时不能接收${card}。`;
   };
 
+  const statusText = (() => {
+    if (isEditMode) return '搭建小队';
+    if (runStatus === 'running') return '运行中';
+    if (runStatus === 'pausing') return '准备暂停';
+    if (runStatus === 'paused') return '已暂停';
+    if (runStatus === 'completed') return '已完成';
+    if (runStatus === 'error') return '遇到问题';
+    return '已停止';
+  })();
+
   return (
     <>
       <div className="absolute top-10 left-10 z-30 pixel-panel px-10 py-8 max-w-360">
-        <div className="text-sm leading-tight text-text-muted mb-4">任务卡</div>
+        <div className="flex items-center justify-between gap-8 mb-4">
+          <div className="text-sm leading-tight text-text-muted">任务卡</div>
+          <div className="text-xs leading-none text-text-muted">{statusText}</div>
+        </div>
         <div className="text-base leading-tight mb-8">明天去学校 / 公园，需要准备什么？</div>
         {isEditMode ? (
           <Button
@@ -259,10 +282,72 @@ export function EducationModeOverlay({
           >
             运行小队
           </Button>
+        ) : runStatus === 'running' || runStatus === 'pausing' ? (
+          <div className="flex flex-wrap gap-6">
+            <Button
+              variant={runStatus === 'pausing' ? 'disabled' : 'default'}
+              size="md"
+              disabled={runStatus === 'pausing'}
+              onClick={onPauseRun}
+              title="当前这批角色完成后暂停"
+            >
+              暂停
+            </Button>
+            <Button variant="default" size="md" onClick={onStopRun} title="停止后续角色运行">
+              停止
+            </Button>
+          </div>
+        ) : runStatus === 'paused' ? (
+          <div className="flex flex-wrap gap-6">
+            <Button variant="accent" size="md" onClick={onResumeRun} title="继续运行下一批角色">
+              继续
+            </Button>
+            <Button variant="default" size="md" onClick={onStopRun} title="停止后续角色运行">
+              停止
+            </Button>
+          </div>
+        ) : runStatus === 'completed' ? (
+          <div className="flex flex-wrap gap-6">
+            <Button
+              variant="accent"
+              size="md"
+              onClick={() => onRunTeam(connections)}
+              title="按当前连接再运行一次"
+            >
+              再跑一次
+            </Button>
+            <Button variant="default" size="md" onClick={onBackToEdit} title="回到编辑模式调整小队">
+              回到编辑
+            </Button>
+          </div>
+        ) : runStatus === 'error' ? (
+          <div className="flex flex-wrap gap-6">
+            <Button
+              variant="accent"
+              size="md"
+              onClick={() => onRunTeam(connections)}
+              title="重新运行当前小队"
+            >
+              再试一次
+            </Button>
+            <Button variant="default" size="md" onClick={onBackToEdit} title="回到编辑模式修正连接">
+              修一修
+            </Button>
+          </div>
         ) : (
-          <Button variant="default" size="md" onClick={onBackToEdit} title="回到编辑模式">
-            回到编辑
-          </Button>
+          <div className="flex flex-wrap gap-6">
+            <Button
+              variant="accent"
+              size="md"
+              onClick={() => onRunTeam(connections)}
+              title="按当前连接重新运行"
+            >
+              再跑一次
+            </Button>
+            <Button variant="default" size="md" onClick={onBackToEdit} title="回到编辑模式">
+              回到编辑
+            </Button>
+          </div>
         )}
       </div>
 

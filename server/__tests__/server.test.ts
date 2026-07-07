@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 let tmpBase: string;
 let serverJsonDir: string;
 let serverJsonPath: string;
+let originalLightoryHome: string | undefined;
 
 vi.mock('os', async () => {
   const actual = await vi.importActual<typeof import('os')>('os');
@@ -37,6 +38,8 @@ describe('LightoryServer', () => {
 
   beforeEach(() => {
     tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), 'pxl-server-test-'));
+    originalLightoryHome = process.env.LIGHTORY_HOME;
+    process.env.LIGHTORY_HOME = tmpBase;
     serverJsonDir = path.join(tmpBase, '.lightory');
     serverJsonPath = path.join(serverJsonDir, 'server.json');
     fs.mkdirSync(serverJsonDir, { recursive: true });
@@ -45,6 +48,11 @@ describe('LightoryServer', () => {
 
   afterEach(() => {
     server?.stop();
+    if (originalLightoryHome === undefined) {
+      delete process.env.LIGHTORY_HOME;
+    } else {
+      process.env.LIGHTORY_HOME = originalLightoryHome;
+    }
     try {
       fs.rmSync(tmpBase, { recursive: true, force: true });
     } catch {

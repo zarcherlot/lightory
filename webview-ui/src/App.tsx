@@ -9,6 +9,7 @@ import {
   type EducationConnection,
   type EducationConnectionPulse,
   EducationModeOverlay,
+  type EducationRunStatus,
 } from './components/EducationModeOverlay.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
 import { RoleDock } from './components/RoleDock.js';
@@ -38,6 +39,12 @@ import { transport } from './transport/index.js';
 const officeStateRef = { current: null as OfficeState | null };
 const editorState = new EditorState();
 const MAX_ROLE_TASK_ATTEMPTS = 3;
+
+interface RoleTaskInputCard {
+  sourceRoleId: string;
+  card: string;
+  content: string;
+}
 
 // Test-only observability hooks (message/sound logs, addAgent wrapper, selectAgent).
 // Installed only under the e2e harness so they never patch prototypes or grow
@@ -159,11 +166,16 @@ function App() {
   const [activeFlowConnections, setActiveFlowConnections] = useState<EducationConnectionPulse[]>(
     [],
   );
+  const [educationRunStatus, setEducationRunStatus] = useState<EducationRunStatus>('idle');
   const runBatchesRef = useRef<string[][]>([]);
   const runConnectionsRef = useRef<EducationConnection[]>([]);
+  const pausedBatchRef = useRef<string[] | null>(null);
+  const pauseRequestedRef = useRef(false);
   const flowPulseIdRef = useRef(0);
   const runningRoleIdsRef = useRef<Set<string>>(new Set());
   const roleAttemptCountsRef = useRef<Map<string, number>>(new Map());
+  const roleOutputsRef = useRef<Map<string, string>>(new Map());
+  const seenRoleOutputEntryIdsRef = useRef<Set<number>>(new Set());
 
   const currentMajorMinor = toMajorMinor(extensionVersion);
 
@@ -234,20 +246,72 @@ function App() {
     setActiveRoleIds((prev) => new Set(prev).add(roleId));
   }, []);
 
-  const startRoleTask = useCallback((roleId: string) => {
+  useEffect(() => {
+    for (const entry of roleTaskConsoleEntries) {
+      if (seenRoleOutputEntryIdsRef.current.has(entry.id)) continue;
+      seenRoleOutputEntryIdsRef.current.add(entry.id);
+      if (entry.status === 'done' && entry.content.trim()) {
+        roleOutputsRef.current.set(entry.roleId, entry.content.trim());
+      }
+    }
+  }, [roleTaskConsoleEntries]);
+
+  const getRoleInputCards = useCallback(
+    (roleId: string): RoleTaskInputCard[] => {
+      return runConnectionsRef.current
+        .filter((connection) => connection.targetRoleId === roleId)
+        .map((connection) => {
+          const content =
+            roleOutputsRef.current.get(connection.sourceRoleId) ??
+            [...roleTaskConsoleEntries]
+              .reverse()
+              .find(
+                (entry) =>
+                  entry.roleId === connection.sourceRoleId &&
+                  entry.status === 'done' &&
+                  entry.content.trim(),
+              )
+              ?.content.trim();
+          if (!content) return null;
+          return {
+            sourceRoleId: connection.sourceRoleId,
+            card: connection.card,
+            content,
+          };
+        })
+        .filter((input): input is RoleTaskInputCard => input !== null);
+    },
+    [roleTaskConsoleEntries],
+  );
+
+  const startRoleTask = useCallback(
+    (roleId: string) => {
+      const os = getOfficeState();
+      roleAttemptCountsRef.current.set(roleId, (roleAttemptCountsRef.current.get(roleId) ?? 0) + 1);
+      const roleAgentId = getRoleAgentId(roleId);
+      os.setRoleTaskWorking(roleAgentId);
+      const ch = os.characters.get(roleAgentId);
+      transport.send({
+        type: 'startRoleTask',
+        roleId,
+        col: ch?.tileCol ?? 0,
+        row: ch?.tileRow ?? 0,
+        inputCards: getRoleInputCards(roleId),
+      });
+    },
+    [getRoleInputCards],
+  );
+
+  const clearRoleTaskVisuals = useCallback((roleIds: Iterable<string>) => {
     const os = getOfficeState();
-    roleAttemptCountsRef.current.set(roleId, (roleAttemptCountsRef.current.get(roleId) ?? 0) + 1);
-    const ch = os.characters.get(getRoleAgentId(roleId));
-    transport.send({
-      type: 'startRoleTask',
-      roleId,
-      col: ch?.tileCol ?? 0,
-      row: ch?.tileRow ?? 0,
-    });
+    for (const roleId of roleIds) {
+      os.clearRoleTaskState(getRoleAgentId(roleId));
+    }
   }, []);
 
   const startRoleBatch = useCallback(
     (roleIds: string[]) => {
+      setEducationRunStatus('running');
       runningRoleIdsRef.current = new Set(roleIds);
       const roleIdSet = new Set(roleIds);
       const incomingConnections = runConnectionsRef.current.filter((connection) =>
@@ -274,7 +338,12 @@ function App() {
     (connections: EducationConnection[]) => {
       if (activeRoleIds.size === 0) return;
       editor.handleSetEditMode(false);
+      setEducationRunStatus('running');
+      pauseRequestedRef.current = false;
+      pausedBatchRef.current = null;
       roleAttemptCountsRef.current = new Map();
+      roleOutputsRef.current = new Map();
+      seenRoleOutputEntryIdsRef.current = new Set();
       runConnectionsRef.current = connections;
       setActiveFlowConnections([]);
       const batches = buildRoleRunBatches(activeRoleIds, connections);
@@ -288,7 +357,12 @@ function App() {
   useEffect(() => {
     if (!lastRoleTaskStatus) return;
     if (lastRoleTaskStatus.status !== 'done' && lastRoleTaskStatus.status !== 'error') return;
-    if (!runningRoleIdsRef.current.has(lastRoleTaskStatus.roleId)) return;
+    if (!runningRoleIdsRef.current.has(lastRoleTaskStatus.roleId)) {
+      if (educationRunStatus !== 'running' && educationRunStatus !== 'pausing') {
+        clearRoleTaskVisuals([lastRoleTaskStatus.roleId]);
+      }
+      return;
+    }
 
     if (lastRoleTaskStatus.status === 'error') {
       const attempts = roleAttemptCountsRef.current.get(lastRoleTaskStatus.roleId) ?? 1;
@@ -299,7 +373,10 @@ function App() {
 
       runningRoleIdsRef.current = new Set();
       runBatchesRef.current = [];
+      pausedBatchRef.current = null;
+      pauseRequestedRef.current = false;
       setActiveFlowConnections([]);
+      setEducationRunStatus('error');
       return;
     }
 
@@ -310,14 +387,60 @@ function App() {
 
     const nextBatch = runBatchesRef.current.shift();
     if (nextBatch) {
+      if (pauseRequestedRef.current) {
+        pausedBatchRef.current = nextBatch;
+        pauseRequestedRef.current = false;
+        clearRoleTaskVisuals(roleDefinitions.map((role) => role.id));
+        setActiveFlowConnections([]);
+        setEducationRunStatus('paused');
+        return;
+      }
       startRoleBatch(nextBatch);
+      return;
     }
-  }, [lastRoleTaskStatus, startRoleBatch, startRoleTask]);
+
+    setActiveFlowConnections([]);
+    setEducationRunStatus('completed');
+  }, [clearRoleTaskVisuals, educationRunStatus, lastRoleTaskStatus, startRoleBatch, startRoleTask]);
+
+  const handlePauseRun = useCallback(() => {
+    if (educationRunStatus !== 'running') return;
+    pauseRequestedRef.current = true;
+    setEducationRunStatus('pausing');
+  }, [educationRunStatus]);
+
+  const handleResumeRun = useCallback(() => {
+    if (educationRunStatus !== 'paused') return;
+    const nextBatch = pausedBatchRef.current ?? runBatchesRef.current.shift();
+    pausedBatchRef.current = null;
+    pauseRequestedRef.current = false;
+    if (nextBatch) {
+      startRoleBatch(nextBatch);
+      return;
+    }
+    setEducationRunStatus('completed');
+  }, [educationRunStatus, startRoleBatch]);
+
+  const handleStopRun = useCallback(() => {
+    clearRoleTaskVisuals(roleDefinitions.map((role) => role.id));
+    runningRoleIdsRef.current = new Set();
+    runBatchesRef.current = [];
+    pausedBatchRef.current = null;
+    pauseRequestedRef.current = false;
+    setActiveFlowConnections([]);
+    setEducationRunStatus('idle');
+  }, [clearRoleTaskVisuals]);
 
   const handleBackToEdit = useCallback(() => {
+    clearRoleTaskVisuals(roleDefinitions.map((role) => role.id));
+    runningRoleIdsRef.current = new Set();
+    runBatchesRef.current = [];
+    pausedBatchRef.current = null;
+    pauseRequestedRef.current = false;
     setActiveFlowConnections([]);
+    setEducationRunStatus('idle');
     editor.handleSetEditMode(true);
-  }, [editor]);
+  }, [clearRoleTaskVisuals, editor]);
 
   const officeState = getOfficeState();
 
@@ -437,11 +560,15 @@ function App() {
             officeState={officeState}
             activeRoleIds={activeRoleIds}
             isEditMode={editor.isEditMode}
+            runStatus={educationRunStatus}
             containerRef={containerRef}
             zoom={editor.zoom}
             panRef={editor.panRef}
             activeFlowConnections={activeFlowConnections}
             onRunTeam={handleRunTeam}
+            onPauseRun={handlePauseRun}
+            onResumeRun={handleResumeRun}
+            onStopRun={handleStopRun}
             onBackToEdit={handleBackToEdit}
           />
 

@@ -1,7 +1,6 @@
 import * as crypto from 'crypto';
 import type { FastifyInstance } from 'fastify';
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 
 import type { AgentRuntime } from './agentRuntime.js';
@@ -9,6 +8,7 @@ import type { AgentStateStore } from './agentStateStore.js';
 import type { AssetCache, SetHooksEnabledSideEffect } from './clientMessageHandler.js';
 import type { StartRoleTaskSideEffect } from './clientMessageHandler.js';
 import { SERVER_JSON_DIR, SERVER_JSON_NAME } from './constants.js';
+import { getHomeDir } from './homeDir.js';
 import { createHttpServer } from './httpServer.js';
 
 /** Discovery file written to ~/.lightory/server.json so hook scripts can find the server. */
@@ -139,7 +139,7 @@ export class LightoryServer {
 
   /** Returns the absolute path to ~/.lightory/server.json. */
   private getServerJsonPath(): string {
-    return path.join(os.homedir(), SERVER_JSON_DIR, SERVER_JSON_NAME);
+    return path.join(getHomeDir(), SERVER_JSON_DIR, SERVER_JSON_NAME);
   }
 
   /** Read and parse server.json. Returns null if missing or malformed. */

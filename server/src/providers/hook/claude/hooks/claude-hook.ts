@@ -6,7 +6,11 @@ import * as path from 'path';
 import { HOOK_API_PREFIX, SERVER_JSON_DIR, SERVER_JSON_NAME } from '../../../../constants.js';
 import type { ServerConfig } from '../../../../server.js';
 
-const SERVER_JSON = path.join(os.homedir(), SERVER_JSON_DIR, SERVER_JSON_NAME);
+function getHomeDir(): string {
+  return process.env['LIGHTORY_HOME'] || process.env['HOME'] || os.homedir();
+}
+
+const SERVER_JSON = path.join(getHomeDir(), SERVER_JSON_DIR, SERVER_JSON_NAME);
 
 /**
  * CI / e2e diagnostic: when LIGHTORY_DEBUG_LOG is set, record the hook

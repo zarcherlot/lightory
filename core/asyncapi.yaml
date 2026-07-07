@@ -694,6 +694,24 @@ components:
           type: integer
         row:
           type: integer
+        inputCards:
+          type: array
+          description: Upstream role result cards delivered to this role for the current team run.
+          items:
+            $ref: '#/components/schemas/RoleTaskInputCard'
+
+    RoleTaskInputCard:
+      description: A result card produced by an upstream role and passed to a downstream role task.
+      type: object
+      additionalProperties: false
+      required: [sourceRoleId, card, content]
+      properties:
+        sourceRoleId:
+          type: string
+        card:
+          type: string
+        content:
+          type: string
 
     FocusAgent:
       description: Focus an agent's terminal.

@@ -298,6 +298,13 @@ export interface StartRoleTask {
   roleId: string;
   col: number;
   row: number;
+  inputCards?: RoleTaskInputCard[];
+}
+
+export interface RoleTaskInputCard {
+  sourceRoleId: string;
+  card: string;
+  content: string;
 }
 
 export interface FocusAgent {

@@ -6,10 +6,19 @@ import { readLayoutFromFile, writeLayoutToFile } from './layoutPersistence.js';
 import { claudeProvider } from './providers/index.js';
 
 type WsSend = (message: Record<string, unknown>) => void;
+export interface RoleTaskInputCard {
+  sourceRoleId: string;
+  card: string;
+  content: string;
+}
 
 /** Async hook toggle side effect (install/uninstall + script copy). Provided by cli.ts. */
 export type SetHooksEnabledSideEffect = (enabled: boolean) => Promise<void> | void;
-export type StartRoleTaskSideEffect = (roleId: string, send: WsSend) => Promise<void> | void;
+export type StartRoleTaskSideEffect = (
+  roleId: string,
+  send: WsSend,
+  inputCards: RoleTaskInputCard[],
+) => Promise<void> | void;
 
 /** Cached assets loaded at server startup. Sent to each WebSocket client on webviewReady. */
 export interface AssetCache {
@@ -107,7 +116,7 @@ export function handleClientMessage(
     case 'startRoleTask': {
       const roleId = typeof msg.roleId === 'string' ? msg.roleId : '';
       if (roleId) {
-        void ctx.onStartRoleTask?.(roleId, send);
+        void ctx.onStartRoleTask?.(roleId, send, parseRoleTaskInputCards(msg.inputCards));
       }
       break;
     }
@@ -139,6 +148,28 @@ export function handleClientMessage(
       // require IDE-specific handling (not yet implemented for standalone)
       break;
   }
+}
+
+function parseRoleTaskInputCards(raw: unknown): RoleTaskInputCard[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item): RoleTaskInputCard | null => {
+      if (!item || typeof item !== 'object') return null;
+      const card = item as Record<string, unknown>;
+      if (
+        typeof card.sourceRoleId !== 'string' ||
+        typeof card.card !== 'string' ||
+        typeof card.content !== 'string'
+      ) {
+        return null;
+      }
+      return {
+        sourceRoleId: card.sourceRoleId,
+        card: card.card,
+        content: card.content,
+      };
+    })
+    .filter((card): card is RoleTaskInputCard => card !== null);
 }
 
 function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {

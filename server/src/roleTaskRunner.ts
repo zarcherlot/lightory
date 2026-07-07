@@ -4,6 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 
 import type { HookProvider } from '../../core/src/provider.js';
+import type { RoleTaskInputCard } from './clientMessageHandler.js';
 
 type WsSend = (message: Record<string, unknown>) => void;
 
@@ -13,6 +14,7 @@ const ROLE_TASK_FILES: Record<string, string> = {
   travel: 'travel.md',
   captain: 'captain.md',
 };
+const ROLE_TASK_TIMEOUT_MS = 120_000;
 
 export interface RoleTaskRunnerOptions {
   provider: HookProvider;
@@ -25,11 +27,12 @@ interface CommandSpec {
   args: string[];
   env?: Record<string, string>;
   displayCommand?: string;
+  input?: string;
   outputPath?: string;
 }
 
 export function createRoleTaskRunner(options: RoleTaskRunnerOptions) {
-  return (roleId: string, send: WsSend): void => {
+  return (roleId: string, send: WsSend, inputCards: RoleTaskInputCard[] = []): void => {
     const relativeTaskFile = ROLE_TASK_FILES[roleId];
     const runId = `${roleId}-${Date.now().toString(36)}`;
 
@@ -41,12 +44,14 @@ export function createRoleTaskRunner(options: RoleTaskRunnerOptions) {
     };
 
     if (!relativeTaskFile) {
+      emitStatus('error');
       emit({ status: 'error', stream: 'stderr', content: `Unknown role task: ${roleId}\n` });
       return;
     }
 
     const taskPath = path.join(options.rolesDir, relativeTaskFile);
     if (!fs.existsSync(taskPath)) {
+      emitStatus('error');
       emit({
         status: 'error',
         stream: 'stderr',
@@ -57,15 +62,19 @@ export function createRoleTaskRunner(options: RoleTaskRunnerOptions) {
 
     const taskMarkdown = fs.readFileSync(taskPath, 'utf8');
     const prompt = [
-      `Execute this ${roleId} role markdown task.`,
-      `Source file: ${taskPath}`,
+      `Execute this ${roleId} role task using only the task text below.`,
+      '',
+      'Do not read local files. Do not list directories. Do not run shell commands.',
+      'If the task needs current weather, use built-in web search only.',
+      'Return only the final child-friendly card or checklist text.',
+      '',
+      formatInputCards(inputCards),
       '',
       taskMarkdown,
-      '',
-      'Return the result directly in this console.',
     ].join('\n');
     const command = buildRoleTaskCommand(options.provider, prompt, options.cwd, runId);
     if (!command) {
+      emitStatus('error');
       emit({
         status: 'error',
         stream: 'stderr',
@@ -80,21 +89,44 @@ export function createRoleTaskRunner(options: RoleTaskRunnerOptions) {
       cwd: options.cwd,
       env: { ...process.env, ...command.env },
       shell: false,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ['pipe', 'pipe', 'pipe'],
     });
 
     let stdout = '';
     let stderr = '';
+    let timedOut = false;
+    let settled = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      emitStatus('error');
+      emit({
+        status: 'error',
+        stream: 'stderr',
+        content: `Role task timed out after ${Math.round(ROLE_TASK_TIMEOUT_MS / 1000)} seconds.\n`,
+      });
+      child.kill();
+    }, ROLE_TASK_TIMEOUT_MS);
+
+    if (command.input !== undefined) {
+      child.stdin.end(command.input);
+    } else {
+      child.stdin.end();
+    }
 
     child.stdout.on('data', (chunk: Buffer) => {
       stdout += chunk.toString();
     });
 
     child.stderr.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString();
+      const content = chunk.toString();
+      stderr += content;
+      traceRoleTaskStderr(options.provider.id, runId, roleId, content);
     });
 
     child.on('error', (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
       const commandName = command.displayCommand ?? command.command;
       const hint = errorMessageHasMissingCommand(error)
         ? missingCommandHint(options.provider.id)
@@ -108,6 +140,13 @@ export function createRoleTaskRunner(options: RoleTaskRunnerOptions) {
     });
 
     child.on('close', (code, signal) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (timedOut) {
+        cleanupTaskOutput(command.outputPath);
+        return;
+      }
       const output = readTaskOutput(command.outputPath) || stdout.trim();
       const semanticFailure = isRoleTaskFailureOutput(output);
       const ok = code === 0 && !semanticFailure;
@@ -131,15 +170,40 @@ export function createRoleTaskRunner(options: RoleTaskRunnerOptions) {
               ]
                 .filter(Boolean)
                 .join('\n');
-      emitStatus(ok ? 'done' : 'error', ok ? inferWeatherIcon(output) : undefined);
       emit({
         status: ok ? 'done' : 'error',
         stream: ok ? 'stdout' : 'stderr',
         content: content.endsWith('\n') ? content : `${content}\n`,
       });
+      emitStatus(ok ? 'done' : 'error', ok ? inferWeatherIcon(output) : undefined);
       cleanupTaskOutput(command.outputPath);
     });
   };
+}
+
+function formatInputCards(inputCards: RoleTaskInputCard[]): string {
+  if (inputCards.length === 0) {
+    return 'Input cards received from upstream roles: none.';
+  }
+  return [
+    'Input cards received from upstream roles:',
+    ...inputCards.map(
+      (input) =>
+        `- ${input.card} from ${input.sourceRoleId}:\n${input.content.trim() || '(empty card)'}`,
+    ),
+  ].join('\n');
+}
+
+function traceRoleTaskStderr(
+  providerId: string,
+  runId: string,
+  roleId: string,
+  content: string,
+): void {
+  if (providerId !== 'codex') return;
+  const trimmed = content.trim();
+  if (!trimmed) return;
+  console.error(`[Lightory] roleTask stderr run=${runId} role=${roleId}\n${trimmed}`);
 }
 
 function isRoleTaskFailureOutput(output: string): boolean {
@@ -170,25 +234,48 @@ function buildRoleTaskCommand(
       const outputPath = path.join(os.tmpdir(), `lightory-${runId}-last-message.txt`);
       return {
         command: 'codex',
-        args: ['exec', '--color', 'never', '--output-last-message', outputPath, prompt],
+        args: [
+          'exec',
+          '--ignore-user-config',
+          '--color',
+          'never',
+          '--sandbox',
+          'read-only',
+          '-c',
+          'model_provider="my_codex"',
+          '-c',
+          'model="gpt-5.5"',
+          '-c',
+          'model_reasoning_effort="medium"',
+          '-c',
+          'model_providers.my_codex.name="my_codex"',
+          '-c',
+          'model_providers.my_codex.base_url="https://tokenrain.ai/v1"',
+          '-c',
+          'model_providers.my_codex.wire_api="responses"',
+          '-c',
+          'model_providers.my_codex.requires_openai_auth=true',
+          '--cd',
+          cwd,
+          '--output-last-message',
+          outputPath,
+          '-',
+        ],
         env: { CODEX_SESSION_ID: `pixel-role-${runId}`, PWD: cwd },
+        input: prompt,
         outputPath,
       };
     case 'opencode':
       const opencodeCommand = process.env['LIGHTORY_OPENCODE_BIN'] ?? 'opencode';
       return {
-        command: '/bin/zsh',
-        args: ['-lc', `${shellQuote(opencodeCommand)} run ${shellQuote(prompt)}`],
+        command: opencodeCommand,
+        args: ['run', prompt],
         env: { PWD: cwd },
         displayCommand: opencodeCommand,
       };
     default:
       return null;
   }
-}
-
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
 function errorMessageHasMissingCommand(error: Error): boolean {
