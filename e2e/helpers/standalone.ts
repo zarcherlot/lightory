@@ -121,7 +121,7 @@ async function stopProcess(child: ChildProcessWithoutNullStreams): Promise<void>
 /**
  * Install a WebSocket recorder BEFORE page navigation. Proxies window.WebSocket
  * so every incoming message frame is JSON-parsed and pushed to
- * window.__pixelAgentsMessages, which drainMessages() reads from.
+ * window.__lightoryMessages, which drainMessages() reads from.
  */
 async function installMessageRecorder(page: Page): Promise<void> {
   await page.addInitScript(() => {
@@ -144,14 +144,13 @@ async function installMessageRecorder(page: Page): Promise<void> {
       },
     });
     window.WebSocket = RecordingWebSocket as typeof WebSocket;
-    (window as Window & { __pixelAgentsMessages?: unknown[] }).__pixelAgentsMessages =
-      recordedMessages;
+    (window as Window & { __lightoryMessages?: unknown[] }).__lightoryMessages = recordedMessages;
   });
 }
 
 async function drainRecordedMessages(page: Page): Promise<RecordedServerMessage[]> {
   return await page.evaluate(() => {
-    const store = (window as Window & { __pixelAgentsMessages?: unknown[] }).__pixelAgentsMessages;
+    const store = (window as Window & { __lightoryMessages?: unknown[] }).__lightoryMessages;
     if (!Array.isArray(store)) {
       return [];
     }
@@ -189,9 +188,9 @@ export async function launchStandalone(page: Page): Promise<StandaloneSession> {
   try {
     await page.setViewportSize({ width: 1280, height: 800 });
     // Mark this as the e2e harness before navigation so the standalone webview
-    // installs its test-only observability hooks (window.__pixelAgentsTestHooks).
+    // installs its test-only observability hooks (window.__lightoryTestHooks).
     await page.addInitScript(() => {
-      (window as unknown as { __PIXEL_AGENTS_E2E?: boolean }).__PIXEL_AGENTS_E2E = true;
+      (window as unknown as { __LIGHTORY_E2E?: boolean }).__LIGHTORY_E2E = true;
     });
     await installMessageRecorder(page);
     await waitForHttpOk(`${hostUrl}/api/health`);

@@ -44,6 +44,10 @@ export interface EducationConnection {
   card: string;
 }
 
+export interface EducationConnectionPulse extends EducationConnection {
+  pulseId: number;
+}
+
 interface ErrorFeedback {
   id: number;
   text: string;
@@ -56,6 +60,7 @@ interface EducationModeOverlayProps {
   containerRef: React.RefObject<HTMLDivElement | null>;
   zoom: number;
   panRef: React.RefObject<{ x: number; y: number }>;
+  activeFlowConnections: EducationConnectionPulse[];
   onRunTeam: (connections: EducationConnection[]) => void;
   onBackToEdit: () => void;
 }
@@ -67,16 +72,21 @@ export function EducationModeOverlay({
   containerRef,
   zoom,
   panRef,
+  activeFlowConnections,
   onRunTeam,
   onBackToEdit,
 }: EducationModeOverlayProps) {
   const [, setTick] = useState(0);
   const [draggedCard, setDraggedCard] = useState<DraggedCard | null>(null);
   const [hoveredTargetRoleId, setHoveredTargetRoleId] = useState<string | null>(null);
+  const [hoveredRoleId, setHoveredRoleId] = useState<string | null>(null);
+  const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
   const [connections, setConnections] = useState<EducationConnection[]>([]);
   const [connectionFeedbacks, setConnectionFeedbacks] = useState<ConnectionFeedback[]>([]);
   const [errorFeedback, setErrorFeedback] = useState<ErrorFeedback | null>(null);
   const feedbackIdRef = useRef(0);
+  const seenFlowPulseIdsRef = useRef<Set<number>>(new Set());
+  const rolePositionsRef = useRef<RolePosition[]>([]);
 
   useEffect(() => {
     let rafId = 0;
@@ -87,6 +97,57 @@ export function EducationModeOverlay({
     rafId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafId);
   }, []);
+
+  useEffect(() => {
+    for (const connection of activeFlowConnections) {
+      if (seenFlowPulseIdsRef.current.has(connection.pulseId)) continue;
+      seenFlowPulseIdsRef.current.add(connection.pulseId);
+      const id = ++feedbackIdRef.current;
+      setConnectionFeedbacks((prev) => [...prev, { id, ...connection }]);
+      window.setTimeout(() => {
+        setConnectionFeedbacks((prev) => prev.filter((feedback) => feedback.id !== id));
+      }, 1900);
+    }
+  }, [activeFlowConnections]);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return undefined;
+
+    const getRoleAtPoint = (clientX: number, clientY: number) => {
+      const rect = el.getBoundingClientRect();
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
+      return (
+        rolePositionsRef.current.find(
+          (position) =>
+            Math.abs(position.screenX - x) <= 52 && Math.abs(position.screenY - 42 - y) <= 52,
+        ) ?? null
+      );
+    };
+
+    const handleMouseMove = (event: MouseEvent) => {
+      const role = getRoleAtPoint(event.clientX, event.clientY);
+      setHoveredRoleId((roleId) => (roleId === role?.roleId ? roleId : (role?.roleId ?? null)));
+    };
+
+    const handleMouseLeave = () => setHoveredRoleId(null);
+
+    const handleClick = (event: MouseEvent) => {
+      const role = getRoleAtPoint(event.clientX, event.clientY);
+      if (!role) return;
+      setSelectedRoleId((roleId) => (roleId === role.roleId ? null : role.roleId));
+    };
+
+    el.addEventListener('mousemove', handleMouseMove);
+    el.addEventListener('mouseleave', handleMouseLeave);
+    el.addEventListener('click', handleClick);
+    return () => {
+      el.removeEventListener('mousemove', handleMouseMove);
+      el.removeEventListener('mouseleave', handleMouseLeave);
+      el.removeEventListener('click', handleClick);
+    };
+  }, [containerRef]);
 
   const el = containerRef.current;
   if (!el) return null;
@@ -118,12 +179,33 @@ export function EducationModeOverlay({
       };
     })
     .filter((position): position is RolePosition => position !== null);
+  rolePositionsRef.current = rolePositions;
 
   const getPosition = (roleId: string) =>
     rolePositions.find((position) => position.roleId === roleId) ?? null;
 
   const isValidTarget = (card: string, sourceRoleId: string, targetRoleId: string) =>
     sourceRoleId !== targetRoleId && (ACCEPTS_CARD[targetRoleId] ?? []).includes(card);
+
+  const getConnectionKey = (connection: EducationConnection) =>
+    `${connection.sourceRoleId}->${connection.targetRoleId}:${connection.card}`;
+
+  const getRoleConnectionKeys = (roleId: string | null) => {
+    if (!roleId) return new Set<string>();
+    return new Set(
+      connections
+        .filter(
+          (connection) => connection.sourceRoleId === roleId || connection.targetRoleId === roleId,
+        )
+        .map(getConnectionKey),
+    );
+  };
+
+  const hoveredConnectionKeys = getRoleConnectionKeys(hoveredRoleId);
+  const selectedConnectionKeys = getRoleConnectionKeys(selectedRoleId);
+  const focusedConnectionKeys =
+    hoveredConnectionKeys.size > 0 ? hoveredConnectionKeys : selectedConnectionKeys;
+  const hasFocusedConnections = focusedConnectionKeys.size > 0;
 
   const showError = (text: string) => {
     const id = ++feedbackIdRef.current;
@@ -276,6 +358,12 @@ export function EducationModeOverlay({
                 card={connection.card}
                 markerId={`education-arrow-${connection.sourceRoleId}-${connection.targetRoleId}-${connection.card}-${index}`}
                 persistent
+                emphasized={
+                  !hasFocusedConnections || focusedConnectionKeys.has(getConnectionKey(connection))
+                }
+                muted={
+                  hasFocusedConnections && !focusedConnectionKeys.has(getConnectionKey(connection))
+                }
               />
             );
           })}
@@ -291,6 +379,8 @@ export function EducationModeOverlay({
                 card={feedback.card}
                 markerId={`education-arrow-${feedback.sourceRoleId}-${feedback.targetRoleId}-${feedback.card}-${connections.length + index}`}
                 persistent={false}
+                emphasized
+                muted={false}
               />
             );
           })}
@@ -384,25 +474,36 @@ interface ConnectionCurveProps {
   card: string;
   markerId: string;
   persistent: boolean;
+  emphasized: boolean;
+  muted: boolean;
 }
 
-function ConnectionCurve({ source, target, card, markerId, persistent }: ConnectionCurveProps) {
+function ConnectionCurve({
+  source,
+  target,
+  card,
+  markerId,
+  persistent,
+  emphasized,
+  muted,
+}: ConnectionCurveProps) {
   const sourceY = source.screenY - 104;
   const targetY = target.screenY - 56;
   const midY = Math.min(sourceY, targetY) - 72;
   const color = CARD_COLORS[card] ?? 'var(--color-accent-bright)';
   const labelX = (source.screenX + target.screenX) / 2;
   const labelY = midY - 8;
+  const opacity = muted ? '0.16' : emphasized ? (persistent ? '0.82' : '0.9') : '0.55';
 
   return (
-    <g className={persistent ? undefined : 'education-connection-feedback'}>
+    <g className={persistent ? 'education-connection-persistent' : 'education-connection-feedback'}>
       <path
         d={`M ${source.screenX} ${sourceY} C ${source.screenX} ${midY}, ${target.screenX} ${midY}, ${target.screenX} ${targetY}`}
         fill="none"
         stroke={color}
-        strokeWidth="4"
+        strokeWidth={emphasized && !muted ? '5' : '4'}
         strokeLinecap="round"
-        opacity={persistent ? '0.55' : '0.85'}
+        opacity={opacity}
         markerEnd={`url(#${markerId})`}
       />
       <text
@@ -413,6 +514,7 @@ function ConnectionCurve({ source, target, card, markerId, persistent }: Connect
         stroke="var(--education-card-label-stroke)"
         strokeWidth="4"
         paintOrder="stroke"
+        opacity={muted ? '0.24' : '1'}
         style={{ fontSize: 18 }}
       >
         {card}

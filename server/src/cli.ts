@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Standalone CLI entry point: `npx pixel-agents`
+ * Standalone CLI entry point: `npx lightory`
  *
  * Starts the Fastify server in standalone mode with SPA serving and WebSocket.
  * Loads all assets (PNGs -> SpriteData) on startup and caches in memory.
@@ -30,7 +30,7 @@ import {
   opencodeProvider,
 } from './providers/index.js';
 import { createRoleTaskRunner } from './roleTaskRunner.js';
-import { PixelAgentsServer } from './server.js';
+import { LightoryServer } from './server.js';
 
 // ── Argument parsing ──────────────────────────────────────────
 
@@ -59,7 +59,7 @@ function parseArgs(argv: string[]): CliArgs {
       args.provider = provider;
       i++;
     } else if (argv[i] === '--help') {
-      console.log(`Usage: pixel-agents [options]
+      console.log(`Usage: lightory [options]
 
 Options:
   --port, -p <number>   Port to listen on (default: 3100)
@@ -89,7 +89,7 @@ async function main(): Promise<void> {
   const rolesDir = path.join(distRoot, 'roles');
 
   // ── Load assets on startup ──
-  console.log('[Pixel Agents] Loading assets...');
+  console.log('[Lightory] Loading assets...');
   const assetCache: AssetCache = {
     characters: await loadCharacterSprites(distRoot),
     pets: await loadPetSprites(distRoot),
@@ -102,7 +102,7 @@ async function main(): Promise<void> {
   const petCount = assetCache.pets?.pets.length ?? 0;
   const furnitureCount = assetCache.furniture?.catalog.length ?? 0;
   console.log(
-    `[Pixel Agents] Assets loaded: ${charCount} characters, ${petCount} pets, ${furnitureCount} furniture items`,
+    `[Lightory] Assets loaded: ${charCount} characters, ${petCount} pets, ${furnitureCount} furniture items`,
   );
 
   // ── Store + adapter (shared settings + standalone-scoped agents/seats) ──
@@ -111,7 +111,7 @@ async function main(): Promise<void> {
   store.setAdapter(adapter);
 
   // ── Create server ──
-  const server = new PixelAgentsServer();
+  const server = new LightoryServer();
 
   try {
     // Create runtime first (before server.start, so we can pass it in)
@@ -134,10 +134,10 @@ async function main(): Promise<void> {
         } else if (provider.id === 'codex') {
           copyCodexHookScript(distRoot);
         }
-        console.log('[Pixel Agents] Hooks installed (user toggle)');
+        console.log('[Lightory] Hooks installed (user toggle)');
       } else {
         await provider.uninstallHooks();
-        console.log('[Pixel Agents] Hooks uninstalled (user toggle)');
+        console.log('[Lightory] Hooks uninstalled (user toggle)');
       }
     };
 
@@ -159,8 +159,8 @@ async function main(): Promise<void> {
     currentConfig = { port: config.port, token: config.token };
 
     // Sync runtime refs with persisted settings BEFORE first scan tick
-    runtime.hooksEnabled.current = adapter.getSetting('pixel-agents.hooksEnabled', true);
-    runtime.watchAllSessions.current = adapter.getSetting('pixel-agents.watchAllSessions', false);
+    runtime.hooksEnabled.current = adapter.getSetting('lightory.hooksEnabled', true);
+    runtime.watchAllSessions.current = adapter.getSetting('lightory.watchAllSessions', false);
 
     // Install hooks on startup if the persisted setting says so
     if (runtime.hooksEnabled.current) {
@@ -171,9 +171,9 @@ async function main(): Promise<void> {
         } else if (provider.id === 'codex') {
           copyCodexHookScript(distRoot);
         }
-        console.log(`[Pixel Agents] Hooks ready for ${provider.displayName}`);
+        console.log(`[Lightory] Hooks ready for ${provider.displayName}`);
       } catch (err) {
-        console.error('[Pixel Agents] Failed to install hooks:', err);
+        console.error('[Lightory] Failed to install hooks:', err);
       }
     }
 
@@ -182,14 +182,14 @@ async function main(): Promise<void> {
     const dirs = provider.getSessionDirs?.(cwd);
     if (dirs && dirs[0]) {
       const projectDir = dirs[0];
-      console.log(`[Pixel Agents] Scanning project dir: ${projectDir}`);
+      console.log(`[Lightory] Scanning project dir: ${projectDir}`);
       runtime.startProjectScan(projectDir);
       runtime.startExternalScanning(projectDir);
       runtime.startStaleCheck();
     }
 
     console.log(
-      `\n  Pixel Agents server running at http://${args.host}:${config.port} (${provider.displayName})\n`,
+      `\n  Lightory server running at http://${args.host}:${config.port} (${provider.displayName})\n`,
     );
 
     // ── Graceful shutdown ──

@@ -9,7 +9,7 @@ import type { ServerConfig } from '../../../../server.js';
 const SERVER_JSON = path.join(os.homedir(), SERVER_JSON_DIR, SERVER_JSON_NAME);
 
 /**
- * CI / e2e diagnostic: when PIXEL_AGENTS_DEBUG_LOG is set, record the hook
+ * CI / e2e diagnostic: when LIGHTORY_DEBUG_LOG is set, record the hook
  * script's outcome at every exit point. The hook delivery chain (spawn
  * claude-hook.js -> read server.json -> POST -> server) is otherwise 100%
  * silent: every failure path resolves quietly, so a dropped hook is invisible
@@ -21,7 +21,7 @@ const SERVER_JSON = path.join(os.homedir(), SERVER_JSON_DIR, SERVER_JSON_NAME);
 // process across platforms (macOS VS Code terminal profiles with
 // inheritEnv:false, etc.). After reading server.json we fall back to its
 // `debugLog` field, which the server populated from the same env var.
-let debugLogPath = process.env['PIXEL_AGENTS_DEBUG_LOG'];
+let debugLogPath = process.env['LIGHTORY_DEBUG_LOG'];
 function hookDebug(line: string): void {
   if (!debugLogPath) return;
   try {

@@ -29,57 +29,57 @@ describe('FileStateAdapter', () => {
 
   it('returns defaults when config file does not exist', () => {
     const adapter = new FileStateAdapter();
-    expect(adapter.getSetting('pixel-agents.soundEnabled', false)).toBe(true);
-    expect(adapter.getSetting('pixel-agents.watchAllSessions', true)).toBe(false);
-    expect(adapter.getSetting('pixel-agents.lastSeenVersion', 'x')).toBe('');
+    expect(adapter.getSetting('lightory.soundEnabled', false)).toBe(true);
+    expect(adapter.getSetting('lightory.watchAllSessions', true)).toBe(false);
+    expect(adapter.getSetting('lightory.lastSeenVersion', 'x')).toBe('');
   });
 
   it('round-trips each of the 6 setting keys', () => {
     const adapter = new FileStateAdapter();
 
-    adapter.setSetting('pixel-agents.soundEnabled', false);
-    adapter.setSetting('pixel-agents.lastSeenVersion', '1.3');
-    adapter.setSetting('pixel-agents.alwaysShowLabels', true);
-    adapter.setSetting('pixel-agents.watchAllSessions', true);
-    adapter.setSetting('pixel-agents.hooksEnabled', false);
-    adapter.setSetting('pixel-agents.hooksInfoShown', true);
+    adapter.setSetting('lightory.soundEnabled', false);
+    adapter.setSetting('lightory.lastSeenVersion', '1.3');
+    adapter.setSetting('lightory.alwaysShowLabels', true);
+    adapter.setSetting('lightory.watchAllSessions', true);
+    adapter.setSetting('lightory.hooksEnabled', false);
+    adapter.setSetting('lightory.hooksInfoShown', true);
 
-    expect(adapter.getSetting('pixel-agents.soundEnabled', true)).toBe(false);
-    expect(adapter.getSetting('pixel-agents.lastSeenVersion', '')).toBe('1.3');
-    expect(adapter.getSetting('pixel-agents.alwaysShowLabels', false)).toBe(true);
-    expect(adapter.getSetting('pixel-agents.watchAllSessions', false)).toBe(true);
-    expect(adapter.getSetting('pixel-agents.hooksEnabled', true)).toBe(false);
-    expect(adapter.getSetting('pixel-agents.hooksInfoShown', false)).toBe(true);
+    expect(adapter.getSetting('lightory.soundEnabled', true)).toBe(false);
+    expect(adapter.getSetting('lightory.lastSeenVersion', '')).toBe('1.3');
+    expect(adapter.getSetting('lightory.alwaysShowLabels', false)).toBe(true);
+    expect(adapter.getSetting('lightory.watchAllSessions', false)).toBe(true);
+    expect(adapter.getSetting('lightory.hooksEnabled', true)).toBe(false);
+    expect(adapter.getSetting('lightory.hooksInfoShown', false)).toBe(true);
   });
 
   it('ignores unknown setting keys (returns default, does not write)', () => {
     const adapter = new FileStateAdapter();
-    expect(adapter.getSetting('pixel-agents.unknownKey', 'fallback')).toBe('fallback');
-    adapter.setSetting('pixel-agents.unknownKey', 'ignored');
-    const configPath = path.join(tempHome, '.pixel-agents', 'config.json');
+    expect(adapter.getSetting('lightory.unknownKey', 'fallback')).toBe('fallback');
+    adapter.setSetting('lightory.unknownKey', 'ignored');
+    const configPath = path.join(tempHome, '.lightory', 'config.json');
     expect(fs.existsSync(configPath)).toBe(false);
   });
 
-  it('accepts setting keys with or without the pixel-agents. prefix', () => {
+  it('accepts setting keys with or without the lightory. prefix', () => {
     const adapter = new FileStateAdapter();
-    adapter.setSetting('pixel-agents.soundEnabled', false);
+    adapter.setSetting('lightory.soundEnabled', false);
     expect(adapter.getSetting('soundEnabled', true)).toBe(false);
     adapter.setSetting('lastSeenVersion', '1.0');
-    expect(adapter.getSetting('pixel-agents.lastSeenVersion', '')).toBe('1.0');
+    expect(adapter.getSetting('lightory.lastSeenVersion', '')).toBe('1.0');
   });
 
   it('persists settings in config.json with clean field names', () => {
     const adapter = new FileStateAdapter();
-    adapter.setSetting('pixel-agents.soundEnabled', false);
-    const configPath = path.join(tempHome, '.pixel-agents', 'config.json');
+    adapter.setSetting('lightory.soundEnabled', false);
+    const configPath = path.join(tempHome, '.lightory', 'config.json');
     const raw = fs.readFileSync(configPath, 'utf-8');
     const parsed = JSON.parse(raw) as Record<string, Record<string, unknown>>;
     expect(parsed.settings.soundEnabled).toBe(false);
-    expect(parsed.settings['pixel-agents.soundEnabled']).toBeUndefined();
+    expect(parsed.settings['lightory.soundEnabled']).toBeUndefined();
   });
 
   it('reads legacy standalone settings from config.json', () => {
-    const configDir = path.join(tempHome, '.pixel-agents');
+    const configDir = path.join(tempHome, '.lightory');
     fs.mkdirSync(configDir, { recursive: true });
     fs.writeFileSync(
       path.join(configDir, 'config.json'),
@@ -94,8 +94,8 @@ describe('FileStateAdapter', () => {
     );
 
     const adapter = new FileStateAdapter();
-    expect(adapter.getSetting('pixel-agents.soundEnabled', true)).toBe(false);
-    expect(adapter.getSetting('pixel-agents.watchAllSessions', false)).toBe(true);
+    expect(adapter.getSetting('lightory.soundEnabled', true)).toBe(false);
+    expect(adapter.getSetting('lightory.watchAllSessions', false)).toBe(true);
   });
 
   // ── State file (agents + seats) ───────────────
@@ -121,10 +121,10 @@ describe('FileStateAdapter', () => {
     expect(adapter.loadAgents()).toEqual(agents);
   });
 
-  it('writes state at ~/.pixel-agents/state.json', () => {
+  it('writes state at ~/.lightory/state.json', () => {
     const adapter = new FileStateAdapter();
     adapter.saveSeats({ '1': { palette: 2, hueShift: 45 } });
-    const stateFile = path.join(tempHome, '.pixel-agents', 'state.json');
+    const stateFile = path.join(tempHome, '.lightory', 'state.json');
     expect(fs.existsSync(stateFile)).toBe(true);
   });
 

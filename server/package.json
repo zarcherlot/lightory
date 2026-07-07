@@ -1,5 +1,5 @@
 {
-  "name": "pixel-agents",
+  "name": "lightory-server",
   "private": true,
   "scripts": {
     "test": "vitest run",

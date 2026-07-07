@@ -15,7 +15,7 @@ export interface HookEventPayload {
 }
 
 function getServerJsonPath(tmpHome: string): string {
-  return path.join(tmpHome, '.pixel-agents', 'server.json');
+  return path.join(tmpHome, '.lightory', 'server.json');
 }
 
 function isHookServerConfig(value: unknown): value is HookServerConfig {

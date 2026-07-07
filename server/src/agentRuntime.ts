@@ -256,7 +256,7 @@ export class AgentRuntime {
   removeTeammate(teammateId: number, source: string): void {
     const agent = this.store.get(teammateId);
     if (!agent) return;
-    console.log(`[Pixel Agents] Removing teammate ${teammateId} (source: ${source})`);
+    console.log(`[Lightory] Removing teammate ${teammateId} (source: ${source})`);
     this.dismissalTracker.dismiss(agent.jsonlFile);
     this.unregisterAgent(agent.sessionId);
     this.lifecycleCallbacks.onTeammateRemoved?.(teammateId, agent, source);
@@ -274,7 +274,7 @@ export class AgentRuntime {
     for (const id of teammates) {
       const agent = this.store.get(id);
       if (agent) {
-        console.log(`[Pixel Agents] Removing teammate ${id} (lead ${leadId} closed)`);
+        console.log(`[Lightory] Removing teammate ${id} (lead ${leadId} closed)`);
         this.dismissalTracker.dismiss(agent.jsonlFile);
         this.unregisterAgent(agent.sessionId);
         this.removeAgent(id);
@@ -417,9 +417,7 @@ export class AgentRuntime {
       this.registerAgent(agent.sessionId, agent.id);
 
       if (p.id > maxId) maxId = p.id;
-      console.log(
-        `[Pixel Agents] Restored external agent ${p.id} -> ${path.basename(p.jsonlFile)}`,
-      );
+      console.log(`[Lightory] Restored external agent ${p.id} -> ${path.basename(p.jsonlFile)}`);
     }
 
     if (maxId >= this.store.nextAgentId.current) {

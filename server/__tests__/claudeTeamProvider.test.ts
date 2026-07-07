@@ -55,7 +55,7 @@ describe('claudeTeamProvider', () => {
 
   describe('discoverTeammates', () => {
     const fsMod = require('fs') as typeof import('fs');
-    const tmpRoot = path.join(os.tmpdir(), 'pixel-agents-discover-' + Date.now());
+    const tmpRoot = path.join(os.tmpdir(), 'lightory-discover-' + Date.now());
 
     afterEach(() => {
       try {
@@ -100,7 +100,7 @@ describe('claudeTeamProvider', () => {
 
   describe('getTeamMetadataForSession', () => {
     const fsMod = require('fs') as typeof import('fs');
-    const tmpRoot = path.join(os.tmpdir(), 'pixel-agents-meta-' + Date.now());
+    const tmpRoot = path.join(os.tmpdir(), 'lightory-meta-' + Date.now());
 
     afterEach(() => {
       try {

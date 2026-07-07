@@ -35,7 +35,7 @@ describe('codexHookInstaller', () => {
     installHooks();
     const config = readConfig();
 
-    expect(config).toContain('# >>> Pixel Agents Codex hooks >>>');
+    expect(config).toContain('# >>> Lightory Codex hooks >>>');
     expect(config).toContain('hooks.SessionStart =');
     expect(config).toContain('hooks.PreToolUse =');
     expect(config).toContain('hooks.PostToolUse =');
@@ -89,11 +89,11 @@ describe('codexHookInstaller', () => {
 
     expect(config).toContain('model = "gpt-5.5"');
     expect(config).toContain('[projects."/tmp"]');
-    expect(config).not.toContain('Pixel Agents Codex hooks');
+    expect(config).not.toContain('Lightory Codex hooks');
     expect(config).not.toContain('codex-hook.js');
   });
 
-  it('copyHookScript copies to ~/.pixel-agents/hooks/', () => {
+  it('copyHookScript copies to ~/.lightory/hooks/', () => {
     const mockExtPath = path.join(tmpBase, 'mock-ext');
     const hookSrc = path.join(mockExtPath, 'dist', 'hooks');
     fs.mkdirSync(hookSrc, { recursive: true });
@@ -101,7 +101,7 @@ describe('codexHookInstaller', () => {
 
     copyHookScript(mockExtPath);
 
-    const dst = path.join(tmpBase, '.pixel-agents', 'hooks', 'codex-hook.js');
+    const dst = path.join(tmpBase, '.lightory', 'hooks', 'codex-hook.js');
     expect(fs.existsSync(dst)).toBe(true);
     expect(fs.readFileSync(dst, 'utf-8')).toBe('// mock hook script');
   });
@@ -114,7 +114,7 @@ describe('codexHookInstaller', () => {
 
     copyHookScript(mockDistPath);
 
-    const dst = path.join(tmpBase, '.pixel-agents', 'hooks', 'codex-hook.js');
+    const dst = path.join(tmpBase, '.lightory', 'hooks', 'codex-hook.js');
     expect(fs.existsSync(dst)).toBe(true);
     expect(fs.readFileSync(dst, 'utf-8')).toBe('// mock hook script from dist');
   });
@@ -129,7 +129,7 @@ describe('codexHookInstaller', () => {
 
     copyHookScript(mockExtPath);
 
-    const dst = path.join(tmpBase, '.pixel-agents', 'hooks', 'codex-hook.js');
+    const dst = path.join(tmpBase, '.lightory', 'hooks', 'codex-hook.js');
     expect(fs.statSync(dst).mode & 0o100).toBeTruthy();
   });
 });

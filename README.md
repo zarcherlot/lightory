@@ -2,6 +2,12 @@
 
 Lightory is an agent-education web app for children. It helps learners design a small team of agent roles, connect their abilities visually, and run the team to observe how information moves from one role to another.
 
+This is an independent project. Development, issues, and pushes should target:
+
+```text
+https://github.com/zarcherlot/lightory
+```
+
 The current MVP focuses on one learning scenario:
 
 > 明天去学校 / 公园，需要准备什么？
@@ -100,6 +106,12 @@ Open:
 http://127.0.0.1:3100
 ```
 
+Runtime discovery and local app state are stored under:
+
+```text
+~/.lightory/
+```
+
 For frontend-only development:
 
 ```bash
@@ -139,6 +151,26 @@ When Play mode runs, the browser sends role execution requests to the server. Th
 
 The runner treats obvious role-level failures such as `查询失败`, `无法联网`, and `无法获取` as task errors so dependent roles do not run from bad upstream data.
 
+## Provider Hooks
+
+Codex hooks are installed into `~/.codex/config.toml` and call Lightory's bundled hook script from `~/.lightory/hooks/`.
+
+For OpenCode sessions launched from this repository, the project plugin lives at:
+
+```text
+.opencode/plugins/lightory-opencode.ts
+```
+
+For global OpenCode use, copy or symlink that plugin into your OpenCode plugin directory.
+
+Hook scripts discover the local server through:
+
+```text
+~/.lightory/server.json
+```
+
+Do not use the old `~/.pixel-agents` path for new Lightory installs.
+
 ## Current MVP Status
 
 Implemented:
@@ -165,3 +197,5 @@ Next likely work:
 ## License
 
 MIT
+
+Lightory started from the MIT-licensed Pixel Agents codebase. It now lives and evolves as an independent project in `zarcherlot/lightory`.

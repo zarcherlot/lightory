@@ -62,7 +62,7 @@ export const test = base.extend<{ standalone: StandaloneContext; _allureLabels: 
       await attachTextFileIfExists(
         testInfo,
         'server-json',
-        path.join(standalone.tmpHome, '.pixel-agents', 'server.json'),
+        path.join(standalone.tmpHome, '.lightory', 'server.json'),
         'application/json',
       );
 

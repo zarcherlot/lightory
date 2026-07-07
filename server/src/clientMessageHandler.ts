@@ -32,12 +32,12 @@ export interface ClientMessageContext {
 }
 
 // ── Setting key constants ──
-const KEY_SOUND_ENABLED = 'pixel-agents.soundEnabled';
-const KEY_LAST_SEEN_VERSION = 'pixel-agents.lastSeenVersion';
-const KEY_ALWAYS_SHOW_LABELS = 'pixel-agents.alwaysShowLabels';
-const KEY_WATCH_ALL_SESSIONS = 'pixel-agents.watchAllSessions';
-const KEY_HOOKS_ENABLED = 'pixel-agents.hooksEnabled';
-const KEY_HOOKS_INFO_SHOWN = 'pixel-agents.hooksInfoShown';
+const KEY_SOUND_ENABLED = 'lightory.soundEnabled';
+const KEY_LAST_SEEN_VERSION = 'lightory.lastSeenVersion';
+const KEY_ALWAYS_SHOW_LABELS = 'lightory.alwaysShowLabels';
+const KEY_WATCH_ALL_SESSIONS = 'lightory.watchAllSessions';
+const KEY_HOOKS_ENABLED = 'lightory.hooksEnabled';
+const KEY_HOOKS_INFO_SHOWN = 'lightory.hooksInfoShown';
 
 /**
  * Handle incoming ClientMessage from a WebSocket client.
@@ -191,7 +191,7 @@ function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {
     type: 'settingsLoaded',
     soundEnabled: adapter?.getSetting(KEY_SOUND_ENABLED, true) ?? true,
     lastSeenVersion: adapter?.getSetting(KEY_LAST_SEEN_VERSION, '') ?? '',
-    extensionVersion: process.env.PIXEL_AGENTS_VERSION ?? '',
+    extensionVersion: process.env.LIGHTORY_VERSION ?? '',
     watchAllSessions,
     alwaysShowLabels: adapter?.getSetting(KEY_ALWAYS_SHOW_LABELS, false) ?? false,
     hooksEnabled,

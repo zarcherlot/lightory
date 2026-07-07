@@ -5,8 +5,8 @@ import * as path from 'path';
 import { HOOK_SCRIPTS_DIR } from '../../../constants.js';
 import { CODEX_HOOK_EVENTS, CODEX_HOOK_SCRIPT_NAME } from './constants.js';
 
-const MANAGED_BLOCK_START = '# >>> Pixel Agents Codex hooks >>>';
-const MANAGED_BLOCK_END = '# <<< Pixel Agents Codex hooks <<<';
+const MANAGED_BLOCK_START = '# >>> Lightory Codex hooks >>>';
+const MANAGED_BLOCK_END = '# <<< Lightory Codex hooks <<<';
 
 function getCodexConfigPath(): string {
   return path.join(os.homedir(), '.codex', 'config.toml');
@@ -21,7 +21,7 @@ function readCodexConfig(): string {
   try {
     if (fs.existsSync(configPath)) return fs.readFileSync(configPath, 'utf-8');
   } catch (e) {
-    console.error(`[Pixel Agents] Failed to read Codex config: ${e}`);
+    console.error(`[Lightory] Failed to read Codex config: ${e}`);
   }
   return '';
 }
@@ -31,11 +31,11 @@ function writeCodexConfig(contents: string): void {
   const dir = path.dirname(configPath);
   try {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    const tmpPath = `${configPath}.pixel-agents-tmp`;
+    const tmpPath = `${configPath}.lightory-tmp`;
     fs.writeFileSync(tmpPath, contents, 'utf-8');
     fs.renameSync(tmpPath, configPath);
   } catch (e) {
-    console.error(`[Pixel Agents] Failed to write Codex config: ${e}`);
+    console.error(`[Lightory] Failed to write Codex config: ${e}`);
   }
 }
 
@@ -107,7 +107,7 @@ export function installHooks(): void {
   const next = insertManagedBlock(withoutOldBlock, makeManagedBlock());
   if (next !== current) {
     writeCodexConfig(next);
-    console.log('[Pixel Agents] Codex hooks installed in ~/.codex/config.toml');
+    console.log('[Lightory] Codex hooks installed in ~/.codex/config.toml');
   }
 }
 
@@ -116,7 +116,7 @@ export function uninstallHooks(): void {
   const result = removeManagedBlock(current);
   if (result.removed) {
     writeCodexConfig(result.contents.trimEnd() ? `${result.contents.trimEnd()}\n` : '');
-    console.log('[Pixel Agents] Codex hooks removed from ~/.codex/config.toml');
+    console.log('[Lightory] Codex hooks removed from ~/.codex/config.toml');
   }
 }
 
@@ -128,13 +128,13 @@ export function copyHookScript(extensionPath: string): void {
   try {
     if (!fs.existsSync(dstDir)) fs.mkdirSync(dstDir, { recursive: true, mode: 0o700 });
     if (!fs.existsSync(src)) {
-      console.warn(`[Pixel Agents] Codex hook script not found at ${src}`);
+      console.warn(`[Lightory] Codex hook script not found at ${src}`);
       return;
     }
     fs.copyFileSync(src, dst);
     fs.chmodSync(dst, 0o700);
-    console.log(`[Pixel Agents] Codex hook script installed at ${dst}`);
+    console.log(`[Lightory] Codex hook script installed at ${dst}`);
   } catch (e) {
-    console.error(`[Pixel Agents] Failed to copy Codex hook script: ${e}`);
+    console.error(`[Lightory] Failed to copy Codex hook script: ${e}`);
   }
 }

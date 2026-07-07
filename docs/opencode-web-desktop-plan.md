@@ -58,13 +58,13 @@ http://127.0.0.1:3100
 ```
 
 For OpenCode sessions launched from this repository, the project-level plugin at
-`.opencode/plugins/pixel-agents-opencode.ts` sends events to the running server.
+`.opencode/plugins/lightory-opencode.ts` sends events to the running server.
 For global usage, copy or symlink that plugin into the user's global OpenCode
 plugin directory.
 
 For Codex sessions, the standalone server installs a managed hook block into
 `~/.codex/config.toml` and copies `codex-hook.js` to
-`~/.pixel-agents/hooks/`. Codex will ask the user to review/trust those hooks on
+`~/.lightory/hooks/`. Codex will ask the user to review/trust those hooks on
 the next interactive startup. The provider accepts Codex CLI hook payloads such
 as `SessionStart`, `PreToolUse`, `PostToolUse`, `PermissionRequest`, and `Stop`.
 
@@ -78,7 +78,7 @@ Preferred first implementation:
 1. bundle the built server and Web UI
 2. start `node dist/cli.js --provider opencode --port 0` or
    `node dist/cli.js --provider codex --port 0`
-3. read `~/.pixel-agents/server.json`
+3. read `~/.lightory/server.json`
 4. load the local URL in a native WebView
 
 ## Mobile and Pad Apps

@@ -3,7 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Use isolated temp HOME to avoid touching real ~/.pixel-agents/
+// Use isolated temp HOME to avoid touching real ~/.lightory/
 let tmpBase: string;
 let serverJsonDir: string;
 let serverJsonPath: string;
@@ -14,7 +14,7 @@ vi.mock('os', async () => {
 });
 
 // Must import AFTER mock setup
-const { PixelAgentsServer } = await import('../src/server.js');
+const { LightoryServer } = await import('../src/server.js');
 
 async function postHook(
   port: number,
@@ -32,15 +32,15 @@ async function postHook(
   });
 }
 
-describe('PixelAgentsServer', () => {
-  let server: InstanceType<typeof PixelAgentsServer>;
+describe('LightoryServer', () => {
+  let server: InstanceType<typeof LightoryServer>;
 
   beforeEach(() => {
     tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), 'pxl-server-test-'));
-    serverJsonDir = path.join(tmpBase, '.pixel-agents');
+    serverJsonDir = path.join(tmpBase, '.lightory');
     serverJsonPath = path.join(serverJsonDir, 'server.json');
     fs.mkdirSync(serverJsonDir, { recursive: true });
-    server = new PixelAgentsServer();
+    server = new LightoryServer();
   });
 
   afterEach(() => {
@@ -151,7 +151,7 @@ describe('PixelAgentsServer', () => {
   // 10. Second instance reuses existing server
   it('second instance reuses existing server', async () => {
     const config1 = await server.start();
-    const server2 = new PixelAgentsServer();
+    const server2 = new LightoryServer();
     const config2 = await server2.start();
     expect(config2.port).toBe(config1.port);
     expect(config2.pid).toBe(config1.pid);
@@ -174,7 +174,7 @@ describe('PixelAgentsServer', () => {
       JSON.stringify({ port: 9999, pid: 999999, token: 'fake', startedAt: 0 }),
     );
     // Server never started (it would reuse), just stop
-    const server2 = new PixelAgentsServer();
+    const server2 = new LightoryServer();
     server2.stop();
     expect(fs.existsSync(serverJsonPath)).toBe(true);
   });

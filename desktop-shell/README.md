@@ -1,4 +1,4 @@
-# Pixel Agents Desktop Shell Contract
+# Lightory Desktop Shell Contract
 
 This directory is the reserved boundary for a future Tauri or Electron shell.
 The current product surface is the standalone Node server plus browser UI.
@@ -7,8 +7,8 @@ The current product surface is the standalone Node server plus browser UI.
 
 The desktop shell should not own agent state. It should only:
 
-- start the bundled `pixel-agents` server process
-- wait for `~/.pixel-agents/server.json`
+- start the bundled `lightory` server process
+- wait for `~/.lightory/server.json`
 - open `http://127.0.0.1:<port>` in the native WebView
 - forward app lifecycle events to the server process
 - stop the server when the shell owns it and the final window closes

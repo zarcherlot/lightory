@@ -11,7 +11,7 @@ import type { StartRoleTaskSideEffect } from './clientMessageHandler.js';
 import { SERVER_JSON_DIR, SERVER_JSON_NAME } from './constants.js';
 import { createHttpServer } from './httpServer.js';
 
-/** Discovery file written to ~/.pixel-agents/server.json so hook scripts can find the server. */
+/** Discovery file written to ~/.lightory/server.json so hook scripts can find the server. */
 export interface ServerConfig {
   /** Port the HTTP server is listening on */
   port: number;
@@ -23,7 +23,7 @@ export interface ServerConfig {
   startedAt: number;
   /**
    * CI / e2e diagnostic ONLY. When the server is started with
-   * PIXEL_AGENTS_DEBUG_LOG set, that path is propagated here so the hook
+   * LIGHTORY_DEBUG_LOG set, that path is propagated here so the hook
    * script (which reads server.json anyway) can log its delivery outcome to
    * the same file — env vars don't reliably reach the spawned hook process
    * across platforms. Absent in production, so real hook runs never log.
@@ -35,7 +35,7 @@ export interface ServerConfig {
 type HookEventCallback = (providerId: string, event: Record<string, unknown>) => void;
 
 /**
- * Pixel Agents server: receives hook events, broadcasts state via WebSocket,
+ * Lightory server: receives hook events, broadcasts state via WebSocket,
  * and optionally serves the SPA in standalone mode.
  *
  * Routes (via Fastify in httpServer.ts):
@@ -43,11 +43,11 @@ type HookEventCallback = (providerId: string, event: Record<string, unknown>) =>
  * - `GET /api/health` -- health check (no auth)
  * - `GET /ws` -- WebSocket for real-time agent state (auth required)
  *
- * Discovery: writes `~/.pixel-agents/server.json` with port, PID, and auth token.
+ * Discovery: writes `~/.lightory/server.json` with port, PID, and auth token.
  * Multi-window: another browser/server process detects the running server via server.json and
  * reuses it (does not start a second server).
  */
-export class PixelAgentsServer {
+export class LightoryServer {
   private app: FastifyInstance | null = null;
   private config: ServerConfig | null = null;
   private ownsServer = false;
@@ -79,7 +79,7 @@ export class PixelAgentsServer {
       this.config = existing;
       this.ownsServer = false;
       console.log(
-        `[Pixel Agents] Reusing existing server on port ${existing.port} (PID ${existing.pid})`,
+        `[Lightory] Reusing existing server on port ${existing.port} (PID ${existing.pid})`,
       );
       return existing;
     }
@@ -110,13 +110,11 @@ export class PixelAgentsServer {
       startedAt: Date.now(),
       // Diagnostic-only: forward the debug-log path to the hook script via
       // server.json (env vars don't reach the spawned hook reliably).
-      ...(process.env['PIXEL_AGENTS_DEBUG_LOG']
-        ? { debugLog: process.env['PIXEL_AGENTS_DEBUG_LOG'] }
-        : {}),
+      ...(process.env['LIGHTORY_DEBUG_LOG'] ? { debugLog: process.env['LIGHTORY_DEBUG_LOG'] } : {}),
     };
     this.ownsServer = true;
     this.writeServerJson(this.config);
-    console.log(`[Pixel Agents] Server: listening on 127.0.0.1:${port}`);
+    console.log(`[Lightory] Server: listening on 127.0.0.1:${port}`);
 
     return this.config;
   }
@@ -139,7 +137,7 @@ export class PixelAgentsServer {
     return this.config;
   }
 
-  /** Returns the absolute path to ~/.pixel-agents/server.json. */
+  /** Returns the absolute path to ~/.lightory/server.json. */
   private getServerJsonPath(): string {
     return path.join(os.homedir(), SERVER_JSON_DIR, SERVER_JSON_NAME);
   }
@@ -167,7 +165,7 @@ export class PixelAgentsServer {
       fs.writeFileSync(tmpPath, JSON.stringify(config, null, 2), { mode: 0o600 });
       fs.renameSync(tmpPath, filePath);
     } catch (e) {
-      console.error(`[Pixel Agents] Failed to write server.json: ${e}`);
+      console.error(`[Lightory] Failed to write server.json: ${e}`);
     }
   }
 

@@ -156,14 +156,12 @@ export function formatToolStatus(toolName: string, input?: unknown): string {
 
 async function installHooks(): Promise<void> {
   console.log(
-    '[Pixel Agents] OpenCode hooks use the plugin in opencode/pixel-agents-opencode.ts. Copy or symlink it into .opencode/plugins/.',
+    '[Lightory] OpenCode hooks use the plugin in opencode/lightory-opencode.ts. Copy or symlink it into .opencode/plugins/.',
   );
 }
 
 async function uninstallHooks(): Promise<void> {
-  console.log(
-    '[Pixel Agents] Remove pixel-agents-opencode.ts from .opencode/plugins/ to disable hooks.',
-  );
+  console.log('[Lightory] Remove lightory-opencode.ts from .opencode/plugins/ to disable hooks.');
 }
 
 async function areHooksInstalled(): Promise<boolean> {

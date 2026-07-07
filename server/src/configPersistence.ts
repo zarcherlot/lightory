@@ -13,7 +13,7 @@ export interface AdapterSettings {
   hooksInfoShown: boolean;
 }
 
-/** All keys in AdapterSettings. Used by adapters to map `pixel-agents.foo` → `foo`. */
+/** All keys in AdapterSettings. Used by adapters to map `lightory.foo` -> `foo`. */
 export const ADAPTER_SETTING_KEYS = [
   'soundEnabled',
   'lastSeenVersion',
@@ -25,7 +25,7 @@ export const ADAPTER_SETTING_KEYS = [
 
 export type AdapterSettingKey = (typeof ADAPTER_SETTING_KEYS)[number];
 
-export interface PixelAgentsConfig {
+export interface LightoryConfig {
   settings: AdapterSettings;
   externalAssetDirectories: string[];
 }
@@ -74,7 +74,7 @@ function parseAdapterSettings(raw: unknown): AdapterSettings {
   };
 }
 
-export function readConfig(): PixelAgentsConfig {
+export function readConfig(): LightoryConfig {
   const filePath = getConfigFilePath();
   try {
     if (!fs.existsSync(filePath)) {
@@ -84,7 +84,7 @@ export function readConfig(): PixelAgentsConfig {
       };
     }
     const raw = fs.readFileSync(filePath, 'utf-8');
-    const parsed = JSON.parse(raw) as Partial<PixelAgentsConfig> & {
+    const parsed = JSON.parse(raw) as Partial<LightoryConfig> & {
       standalone?: unknown;
     };
     return {
@@ -94,7 +94,7 @@ export function readConfig(): PixelAgentsConfig {
         : [],
     };
   } catch (err) {
-    console.error('[Pixel Agents] Failed to read config file:', err);
+    console.error('[Lightory] Failed to read config file:', err);
     return {
       settings: { ...DEFAULT_ADAPTER_SETTINGS },
       externalAssetDirectories: [],
@@ -102,7 +102,7 @@ export function readConfig(): PixelAgentsConfig {
   }
 }
 
-export function writeConfig(config: PixelAgentsConfig): void {
+export function writeConfig(config: LightoryConfig): void {
   const filePath = getConfigFilePath();
   const dir = path.dirname(filePath);
   try {
@@ -114,6 +114,6 @@ export function writeConfig(config: PixelAgentsConfig): void {
     fs.writeFileSync(tmpPath, json, 'utf-8');
     fs.renameSync(tmpPath, filePath);
   } catch (err) {
-    console.error('[Pixel Agents] Failed to write config file:', err);
+    console.error('[Lightory] Failed to write config file:', err);
   }
 }

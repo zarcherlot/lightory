@@ -2,10 +2,10 @@
  * FileStateAdapter: file-backed StateAdapter for the browser runtime.
  *
  * Settings persist to:
- *   ~/.pixel-agents/config.json
+ *   ~/.lightory/config.json
  *
  * Agents + seats persist to:
- *   ~/.pixel-agents/state.json
+ *   ~/.lightory/state.json
  */
 
 import * as fs from 'fs';
@@ -20,9 +20,13 @@ import { LAYOUT_FILE_DIR } from './constants.js';
 
 const ADAPTER_SETTING_KEY_SET: ReadonlySet<string> = new Set(ADAPTER_SETTING_KEYS);
 
-/** Strip leading "pixel-agents." prefix to match AdapterSettings field names. */
+/** Strip app prefixes to match AdapterSettings field names. */
 function settingNameOf(key: string): AdapterSettingKey | null {
-  const bare = key.startsWith('pixel-agents.') ? key.slice('pixel-agents.'.length) : key;
+  const bare = key.startsWith('lightory.')
+    ? key.slice('lightory.'.length)
+    : key.startsWith('pixel-agents.')
+      ? key.slice('pixel-agents.'.length)
+      : key;
   return ADAPTER_SETTING_KEY_SET.has(bare) ? (bare as AdapterSettingKey) : null;
 }
 
@@ -97,7 +101,7 @@ export class FileStateAdapter implements StateAdapter {
             : {},
       };
     } catch (err) {
-      console.error('[Pixel Agents] Failed to read adapter state:', err);
+      console.error('[Lightory] Failed to read adapter state:', err);
       return { ...EMPTY_STATE };
     }
   }
@@ -113,7 +117,7 @@ export class FileStateAdapter implements StateAdapter {
       fs.writeFileSync(tmpPath, json, 'utf-8');
       fs.renameSync(tmpPath, this.stateFilePath);
     } catch (err) {
-      console.error('[Pixel Agents] Failed to write adapter state:', err);
+      console.error('[Lightory] Failed to write adapter state:', err);
     }
   }
 }

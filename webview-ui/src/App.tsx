@@ -7,6 +7,7 @@ import { DebugView } from './components/DebugView.js';
 import { EditActionBar } from './components/EditActionBar.js';
 import {
   type EducationConnection,
+  type EducationConnectionPulse,
   EducationModeOverlay,
 } from './components/EducationModeOverlay.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
@@ -155,7 +156,12 @@ function App() {
   const [isDebugMode, setIsDebugMode] = useState(false);
   const [alwaysShowOverlay, setAlwaysShowOverlay] = useState(false);
   const [activeRoleIds, setActiveRoleIds] = useState<Set<string>>(() => new Set());
+  const [activeFlowConnections, setActiveFlowConnections] = useState<EducationConnectionPulse[]>(
+    [],
+  );
   const runBatchesRef = useRef<string[][]>([]);
+  const runConnectionsRef = useRef<EducationConnection[]>([]);
+  const flowPulseIdRef = useRef(0);
   const runningRoleIdsRef = useRef<Set<string>>(new Set());
   const roleAttemptCountsRef = useRef<Map<string, number>>(new Map());
 
@@ -243,6 +249,20 @@ function App() {
   const startRoleBatch = useCallback(
     (roleIds: string[]) => {
       runningRoleIdsRef.current = new Set(roleIds);
+      const roleIdSet = new Set(roleIds);
+      const incomingConnections = runConnectionsRef.current.filter((connection) =>
+        roleIdSet.has(connection.targetRoleId),
+      );
+      if (incomingConnections.length > 0) {
+        setActiveFlowConnections(
+          incomingConnections.map((connection) => ({
+            ...connection,
+            pulseId: ++flowPulseIdRef.current,
+          })),
+        );
+      } else {
+        setActiveFlowConnections([]);
+      }
       for (const roleId of roleIds) {
         startRoleTask(roleId);
       }
@@ -255,6 +275,8 @@ function App() {
       if (activeRoleIds.size === 0) return;
       editor.handleSetEditMode(false);
       roleAttemptCountsRef.current = new Map();
+      runConnectionsRef.current = connections;
+      setActiveFlowConnections([]);
       const batches = buildRoleRunBatches(activeRoleIds, connections);
       const firstBatch = batches.shift();
       runBatchesRef.current = batches;
@@ -277,6 +299,7 @@ function App() {
 
       runningRoleIdsRef.current = new Set();
       runBatchesRef.current = [];
+      setActiveFlowConnections([]);
       return;
     }
 
@@ -292,6 +315,7 @@ function App() {
   }, [lastRoleTaskStatus, startRoleBatch, startRoleTask]);
 
   const handleBackToEdit = useCallback(() => {
+    setActiveFlowConnections([]);
     editor.handleSetEditMode(true);
   }, [editor]);
 
@@ -416,6 +440,7 @@ function App() {
             containerRef={containerRef}
             zoom={editor.zoom}
             panRef={editor.panRef}
+            activeFlowConnections={activeFlowConnections}
             onRunTeam={handleRunTeam}
             onBackToEdit={handleBackToEdit}
           />
@@ -468,14 +493,14 @@ function App() {
         zIndex={52}
       >
         <div className="text-base text-text px-10" style={{ lineHeight: 1.4 }}>
-          <p className="mb-8">Your Pixel Agents office now reacts in real-time:</p>
+          <p className="mb-8">Your Lightory office now reacts in real-time:</p>
           <ul className="mb-8 pl-18 list-disc m-0">
             <li className="text-sm mb-2">Permission prompts appear instantly</li>
             <li className="text-sm mb-2">Turn completions detected the moment they happen</li>
             <li className="text-sm mb-2">Sound notifications play immediately</li>
           </ul>
           <p className="mb-12 text-text-muted">
-            This works through Claude Code Hooks, small event listeners that notify Pixel Agents
+            This works through Claude Code Hooks, small event listeners that notify Lightory
             whenever something happens in your Claude sessions.
           </p>
           <div className="text-center">

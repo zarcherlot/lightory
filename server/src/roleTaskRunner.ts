@@ -167,7 +167,7 @@ function buildRoleTaskCommand(
     case 'claude':
       return { command: 'claude', args: [prompt] };
     case 'codex':
-      const outputPath = path.join(os.tmpdir(), `pixel-agents-${runId}-last-message.txt`);
+      const outputPath = path.join(os.tmpdir(), `lightory-${runId}-last-message.txt`);
       return {
         command: 'codex',
         args: ['exec', '--color', 'never', '--output-last-message', outputPath, prompt],
@@ -175,7 +175,7 @@ function buildRoleTaskCommand(
         outputPath,
       };
     case 'opencode':
-      const opencodeCommand = process.env['PIXEL_AGENTS_OPENCODE_BIN'] ?? 'opencode';
+      const opencodeCommand = process.env['LIGHTORY_OPENCODE_BIN'] ?? 'opencode';
       return {
         command: '/bin/zsh',
         args: ['-lc', `${shellQuote(opencodeCommand)} run ${shellQuote(prompt)}`],
@@ -197,7 +197,7 @@ function errorMessageHasMissingCommand(error: Error): boolean {
 
 function missingCommandHint(providerId: string): string {
   if (providerId !== 'opencode') return '';
-  return 'OpenCode CLI was not found. Install it, add it to PATH, set PIXEL_AGENTS_OPENCODE_BIN to its absolute path, or restart this server with --provider codex to run role tasks through Codex.\n';
+  return 'OpenCode CLI was not found. Install it, add it to PATH, set LIGHTORY_OPENCODE_BIN to its absolute path, or restart this server with --provider codex to run role tasks through Codex.\n';
 }
 
 function readTaskOutput(outputPath: string | undefined): string {

@@ -19,7 +19,7 @@ type ServerConfig = {
 };
 
 const PROVIDER_ID = 'opencode';
-const SERVER_JSON = path.join(os.homedir(), '.pixel-agents', 'server.json');
+const SERVER_JSON = path.join(os.homedir(), '.lightory', 'server.json');
 
 function readServerConfig(): ServerConfig | null {
   try {
@@ -38,7 +38,10 @@ function pickSessionId(input: Record<string, unknown>): string | undefined {
   return values.find((value): value is string => typeof value === 'string' && value.length > 0);
 }
 
-async function postPixelEvent(payload: Record<string, unknown>, ctx: PluginContext): Promise<void> {
+async function postLightoryEvent(
+  payload: Record<string, unknown>,
+  ctx: PluginContext,
+): Promise<void> {
   const config = readServerConfig();
   if (!config) return;
 
@@ -61,7 +64,7 @@ async function postPixelEvent(payload: Record<string, unknown>, ctx: PluginConte
   } catch (error) {
     await ctx.client?.app?.log?.({
       body: {
-        service: 'pixel-agents',
+        service: 'lightory',
         level: 'debug',
         message: 'failed to deliver hook event',
         error: error instanceof Error ? error.message : String(error),
@@ -85,11 +88,11 @@ function toolPayload(
   };
 }
 
-export const PixelAgentsOpenCode = async (ctx: PluginContext) => {
+export const LightoryOpenCode = async (ctx: PluginContext) => {
   return {
     event: async ({ event }: { event: Record<string, unknown> }) => {
       if (typeof event?.type !== 'string') return;
-      await postPixelEvent(
+      await postLightoryEvent(
         {
           ...event,
           hook_event_name: event.type,
@@ -102,22 +105,22 @@ export const PixelAgentsOpenCode = async (ctx: PluginContext) => {
       input: Record<string, unknown>,
       output: Record<string, unknown>,
     ) => {
-      await postPixelEvent(toolPayload('tool.execute.before', input, output), ctx);
+      await postLightoryEvent(toolPayload('tool.execute.before', input, output), ctx);
     },
 
     'tool.execute.after': async (
       input: Record<string, unknown>,
       output: Record<string, unknown>,
     ) => {
-      await postPixelEvent(toolPayload('tool.execute.after', input, output), ctx);
+      await postLightoryEvent(toolPayload('tool.execute.after', input, output), ctx);
     },
 
     'permission.asked': async (input: Record<string, unknown>) => {
-      await postPixelEvent({ ...input, hook_event_name: 'permission.asked' }, ctx);
+      await postLightoryEvent({ ...input, hook_event_name: 'permission.asked' }, ctx);
     },
 
     'permission.replied': async (input: Record<string, unknown>) => {
-      await postPixelEvent({ ...input, hook_event_name: 'permission.replied' }, ctx);
+      await postLightoryEvent({ ...input, hook_event_name: 'permission.replied' }, ctx);
     },
   };
 };

@@ -1,6 +1,6 @@
 # Mobile and Pad App Design
 
-Mobile and pad should be built as independent clients over the Pixel Agents
+Mobile and pad should be built as independent clients over the Lightory
 server protocol. They should not embed the desktop editor wholesale.
 
 ## Mobile
