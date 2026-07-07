@@ -83,4 +83,19 @@ describe('roleTaskRunner', () => {
       'Input cards received from upstream roles:\n- weather-card from weather:\nrainy and windy',
     );
   });
+
+  it('builds a role task prompt from runtime markdown overrides', () => {
+    const prompt = __test.buildRoleTaskPrompt('weather', '查询杭州明天的天气。', [
+      {
+        sourceRoleId: 'captain',
+        card: 'plan-card',
+        content: 'bring a water bottle',
+      },
+    ]);
+
+    expect(prompt).toContain('Execute this weather role task');
+    expect(prompt).toContain('plan-card from captain');
+    expect(prompt).toContain('bring a water bottle');
+    expect(prompt).toContain('查询杭州明天的天气。');
+  });
 });

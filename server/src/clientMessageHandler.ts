@@ -12,12 +12,17 @@ export interface RoleTaskInputCard {
   content: string;
 }
 
+export interface RoleTaskOverride {
+  markdown: string;
+}
+
 /** Async hook toggle side effect (install/uninstall + script copy). Provided by cli.ts. */
 export type SetHooksEnabledSideEffect = (enabled: boolean) => Promise<void> | void;
 export type StartRoleTaskSideEffect = (
   roleId: string,
   send: WsSend,
   inputCards: RoleTaskInputCard[],
+  taskOverride?: RoleTaskOverride,
 ) => Promise<void> | void;
 
 /** Cached assets loaded at server startup. Sent to each WebSocket client on webviewReady. */
@@ -116,7 +121,12 @@ export function handleClientMessage(
     case 'startRoleTask': {
       const roleId = typeof msg.roleId === 'string' ? msg.roleId : '';
       if (roleId) {
-        void ctx.onStartRoleTask?.(roleId, send, parseRoleTaskInputCards(msg.inputCards));
+        void ctx.onStartRoleTask?.(
+          roleId,
+          send,
+          parseRoleTaskInputCards(msg.inputCards),
+          parseRoleTaskOverride(msg.taskOverride),
+        );
       }
       break;
     }
@@ -170,6 +180,15 @@ function parseRoleTaskInputCards(raw: unknown): RoleTaskInputCard[] {
       };
     })
     .filter((card): card is RoleTaskInputCard => card !== null);
+}
+
+function parseRoleTaskOverride(raw: unknown): RoleTaskOverride | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const override = raw as Record<string, unknown>;
+  if (typeof override.markdown !== 'string') return undefined;
+  const markdown = override.markdown.trim();
+  if (!markdown) return undefined;
+  return { markdown };
 }
 
 function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {

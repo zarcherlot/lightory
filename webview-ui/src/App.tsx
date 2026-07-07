@@ -12,6 +12,7 @@ import {
   type EducationRunStatus,
 } from './components/EducationModeOverlay.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
+import { RoleConfigModal } from './components/RoleConfigModal.js';
 import { RoleDock } from './components/RoleDock.js';
 import { RoleTaskConsole } from './components/RoleTaskConsole.js';
 import { SettingsModal } from './components/SettingsModal.js';
@@ -30,6 +31,7 @@ import { OfficeState } from './office/engine/officeState.js';
 import { isRotatable } from './office/layout/furnitureCatalog.js';
 import { getPetCount } from './office/sprites/petSpriteData.js';
 import { EditTool } from './office/types.js';
+import { createDefaultRoleConfig, type RoleRuntimeConfig } from './roleConfig.js';
 import { getRoleAgentId, getRoleDefinition, roleDefinitions } from './roles.js';
 import { isE2E } from './runtime.js';
 import { installTestHooks } from './testHooks.js';
@@ -163,6 +165,13 @@ function App() {
   const [isDebugMode, setIsDebugMode] = useState(false);
   const [alwaysShowOverlay, setAlwaysShowOverlay] = useState(false);
   const [activeRoleIds, setActiveRoleIds] = useState<Set<string>>(() => new Set());
+  const [roleConfigs, setRoleConfigs] = useState<Record<string, RoleRuntimeConfig>>(() => ({
+    weather: createDefaultRoleConfig('weather'),
+  }));
+  const [configRoleId, setConfigRoleId] = useState<string | null>(null);
+  const roleConfigsRef = useRef<Record<string, RoleRuntimeConfig>>({
+    weather: createDefaultRoleConfig('weather'),
+  });
   const [activeFlowConnections, setActiveFlowConnections] = useState<EducationConnectionPulse[]>(
     [],
   );
@@ -178,6 +187,10 @@ function App() {
   const seenRoleOutputEntryIdsRef = useRef<Set<number>>(new Set());
 
   const currentMajorMinor = toMajorMinor(extensionVersion);
+
+  useEffect(() => {
+    roleConfigsRef.current = roleConfigs;
+  }, [roleConfigs]);
 
   const handleWhatsNewDismiss = useCallback(() => {
     transport.send({ type: 'setLastSeenVersion', version: currentMajorMinor });
@@ -287,6 +300,7 @@ function App() {
   const startRoleTask = useCallback(
     (roleId: string) => {
       const os = getOfficeState();
+      const roleConfig = roleConfigsRef.current[roleId];
       roleAttemptCountsRef.current.set(roleId, (roleAttemptCountsRef.current.get(roleId) ?? 0) + 1);
       const roleAgentId = getRoleAgentId(roleId);
       os.setRoleTaskWorking(roleAgentId);
@@ -297,6 +311,11 @@ function App() {
         col: ch?.tileCol ?? 0,
         row: ch?.tileRow ?? 0,
         inputCards: getRoleInputCards(roleId),
+        taskOverride: roleConfig?.markdown.trim()
+          ? {
+              markdown: roleConfig.markdown,
+            }
+          : undefined,
       });
     },
     [getRoleInputCards],
@@ -442,6 +461,35 @@ function App() {
     editor.handleSetEditMode(true);
   }, [clearRoleTaskVisuals, editor]);
 
+  const handleConfigureRole = useCallback((roleId: string) => {
+    setConfigRoleId(roleId);
+  }, []);
+
+  const handleSaveRoleConfig = useCallback((config: RoleRuntimeConfig) => {
+    roleConfigsRef.current = { ...roleConfigsRef.current, [config.roleId]: config };
+    setRoleConfigs((prev) => ({ ...prev, [config.roleId]: config }));
+  }, []);
+
+  const handleRunSingleRole = useCallback(
+    (config: RoleRuntimeConfig) => {
+      roleConfigsRef.current = { ...roleConfigsRef.current, [config.roleId]: config };
+      setRoleConfigs((prev) => ({ ...prev, [config.roleId]: config }));
+      setConfigRoleId(null);
+      editor.handleSetEditMode(false);
+      setEducationRunStatus('running');
+      pauseRequestedRef.current = false;
+      pausedBatchRef.current = null;
+      roleAttemptCountsRef.current = new Map();
+      roleOutputsRef.current = new Map();
+      seenRoleOutputEntryIdsRef.current = new Set();
+      runConnectionsRef.current = [];
+      runBatchesRef.current = [];
+      setActiveFlowConnections([]);
+      window.setTimeout(() => startRoleBatch([config.roleId]), 0);
+    },
+    [editor, startRoleBatch],
+  );
+
   const officeState = getOfficeState();
 
   // Force dependency on editorTickForKeyboard to propagate keyboard-triggered re-renders
@@ -565,6 +613,8 @@ function App() {
             zoom={editor.zoom}
             panRef={editor.panRef}
             activeFlowConnections={activeFlowConnections}
+            roleConfigs={roleConfigs}
+            onConfigureRole={handleConfigureRole}
             onRunTeam={handleRunTeam}
             onPauseRun={handlePauseRun}
             onResumeRun={handleResumeRun}
@@ -573,6 +623,14 @@ function App() {
           />
 
           {editor.isEditMode && <RoleDock activeRoleIds={activeRoleIds} />}
+
+          <RoleConfigModal
+            roleId={configRoleId}
+            config={configRoleId ? roleConfigs[configRoleId] : undefined}
+            onClose={() => setConfigRoleId(null)}
+            onSave={handleSaveRoleConfig}
+            onRunRole={handleRunSingleRole}
+          />
         </>
       ) : (
         <DebugView

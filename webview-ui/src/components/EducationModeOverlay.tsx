@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { CHARACTER_SITTING_OFFSET_PX, TOOL_OVERLAY_VERTICAL_OFFSET } from '../constants.js';
 import type { OfficeState } from '../office/engine/officeState.js';
 import { CharacterState, TILE_SIZE } from '../office/types.js';
+import type { RoleRuntimeConfig } from '../roleConfig.js';
 import { getRoleAgentId, roleDefinitions } from '../roles.js';
 import { Button } from './ui/Button.js';
 
@@ -64,6 +65,8 @@ interface EducationModeOverlayProps {
   zoom: number;
   panRef: React.RefObject<{ x: number; y: number }>;
   activeFlowConnections: EducationConnectionPulse[];
+  roleConfigs: Record<string, RoleRuntimeConfig>;
+  onConfigureRole: (roleId: string) => void;
   onRunTeam: (connections: EducationConnection[]) => void;
   onPauseRun: () => void;
   onResumeRun: () => void;
@@ -80,6 +83,8 @@ export function EducationModeOverlay({
   zoom,
   panRef,
   activeFlowConnections,
+  roleConfigs,
+  onConfigureRole,
   onRunTeam,
   onPauseRun,
   onResumeRun,
@@ -147,6 +152,7 @@ export function EducationModeOverlay({
       const role = getRoleAtPoint(event.clientX, event.clientY);
       if (!role) return;
       setSelectedRoleId((roleId) => (roleId === role.roleId ? null : role.roleId));
+      if (isEditMode) onConfigureRole(role.roleId);
     };
 
     el.addEventListener('mousemove', handleMouseMove);
@@ -157,7 +163,7 @@ export function EducationModeOverlay({
       el.removeEventListener('mouseleave', handleMouseLeave);
       el.removeEventListener('click', handleClick);
     };
-  }, [containerRef]);
+  }, [containerRef, isEditMode, onConfigureRole]);
 
   const el = containerRef.current;
   if (!el) return null;
@@ -545,6 +551,11 @@ export function EducationModeOverlay({
             ))}
             <div className="px-7 py-3 bg-bg-dark/90 border-2 border-border text-xs leading-tight max-w-180 text-center">
               {role.name}
+              {role.id === 'weather' && roleConfigs.weather?.weather ? (
+                <div className="mt-2 text-2xs text-text-muted">
+                  {roleConfigs.weather.weather.city} · {roleConfigs.weather.weather.date}
+                </div>
+              ) : null}
             </div>
           </div>
         );
