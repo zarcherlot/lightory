@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+      - '.github/FUNDING.yml'
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+      - '.github/FUNDING.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  ci:
+    name: Browser App
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Generated Messages Drift Check
+        run: |
+          npm run asyncapi:generate
+          git diff --exit-code core/src/messages.ts
+
+      - name: Type Check
+        run: npm run check-types
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Webview Tests
+        run: npm run test:webview
+
+      - name: Server Tests
+        run: npm run test:server
+
+      - name: Build
+        run: npm run build
+
+      - name: Install Playwright Browser
+        run: npx playwright install --with-deps --only-shell chromium
+
+      - name: Standalone E2E
+        run: npm run e2e

@@ -1,0 +1,138 @@
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+
+import type { PersistedAgent } from '../../core/src/schemas.js';
+import { FileStateAdapter } from '../src/fileStateAdapter.js';
+
+describe('FileStateAdapter', () => {
+  let tempHome: string;
+  let originalHome: string | undefined;
+
+  beforeEach(() => {
+    tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'pxl-adapter-test-'));
+    originalHome = process.env.HOME;
+    process.env.HOME = tempHome;
+  });
+
+  afterEach(() => {
+    if (originalHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = originalHome;
+    }
+    fs.rmSync(tempHome, { recursive: true, force: true });
+  });
+
+  // ── Settings ────
+
+  it('returns defaults when config file does not exist', () => {
+    const adapter = new FileStateAdapter();
+    expect(adapter.getSetting('pixel-agents.soundEnabled', false)).toBe(true);
+    expect(adapter.getSetting('pixel-agents.watchAllSessions', true)).toBe(false);
+    expect(adapter.getSetting('pixel-agents.lastSeenVersion', 'x')).toBe('');
+  });
+
+  it('round-trips each of the 6 setting keys', () => {
+    const adapter = new FileStateAdapter();
+
+    adapter.setSetting('pixel-agents.soundEnabled', false);
+    adapter.setSetting('pixel-agents.lastSeenVersion', '1.3');
+    adapter.setSetting('pixel-agents.alwaysShowLabels', true);
+    adapter.setSetting('pixel-agents.watchAllSessions', true);
+    adapter.setSetting('pixel-agents.hooksEnabled', false);
+    adapter.setSetting('pixel-agents.hooksInfoShown', true);
+
+    expect(adapter.getSetting('pixel-agents.soundEnabled', true)).toBe(false);
+    expect(adapter.getSetting('pixel-agents.lastSeenVersion', '')).toBe('1.3');
+    expect(adapter.getSetting('pixel-agents.alwaysShowLabels', false)).toBe(true);
+    expect(adapter.getSetting('pixel-agents.watchAllSessions', false)).toBe(true);
+    expect(adapter.getSetting('pixel-agents.hooksEnabled', true)).toBe(false);
+    expect(adapter.getSetting('pixel-agents.hooksInfoShown', false)).toBe(true);
+  });
+
+  it('ignores unknown setting keys (returns default, does not write)', () => {
+    const adapter = new FileStateAdapter();
+    expect(adapter.getSetting('pixel-agents.unknownKey', 'fallback')).toBe('fallback');
+    adapter.setSetting('pixel-agents.unknownKey', 'ignored');
+    const configPath = path.join(tempHome, '.pixel-agents', 'config.json');
+    expect(fs.existsSync(configPath)).toBe(false);
+  });
+
+  it('accepts setting keys with or without the pixel-agents. prefix', () => {
+    const adapter = new FileStateAdapter();
+    adapter.setSetting('pixel-agents.soundEnabled', false);
+    expect(adapter.getSetting('soundEnabled', true)).toBe(false);
+    adapter.setSetting('lastSeenVersion', '1.0');
+    expect(adapter.getSetting('pixel-agents.lastSeenVersion', '')).toBe('1.0');
+  });
+
+  it('persists settings in config.json with clean field names', () => {
+    const adapter = new FileStateAdapter();
+    adapter.setSetting('pixel-agents.soundEnabled', false);
+    const configPath = path.join(tempHome, '.pixel-agents', 'config.json');
+    const raw = fs.readFileSync(configPath, 'utf-8');
+    const parsed = JSON.parse(raw) as Record<string, Record<string, unknown>>;
+    expect(parsed.settings.soundEnabled).toBe(false);
+    expect(parsed.settings['pixel-agents.soundEnabled']).toBeUndefined();
+  });
+
+  it('reads legacy standalone settings from config.json', () => {
+    const configDir = path.join(tempHome, '.pixel-agents');
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(configDir, 'config.json'),
+      JSON.stringify({
+        standalone: {
+          soundEnabled: false,
+          watchAllSessions: true,
+        },
+        externalAssetDirectories: [],
+      }),
+      'utf-8',
+    );
+
+    const adapter = new FileStateAdapter();
+    expect(adapter.getSetting('pixel-agents.soundEnabled', true)).toBe(false);
+    expect(adapter.getSetting('pixel-agents.watchAllSessions', false)).toBe(true);
+  });
+
+  // ── State file (agents + seats) ───────────────
+
+  it('returns empty arrays/objects when state file does not exist', () => {
+    const adapter = new FileStateAdapter();
+    expect(adapter.loadAgents()).toEqual([]);
+    expect(adapter.loadSeats()).toEqual({});
+  });
+
+  it('round-trips agents to the namespace-specific state file', () => {
+    const adapter = new FileStateAdapter();
+    const agents: PersistedAgent[] = [
+      {
+        id: 1,
+        sessionId: 'sess-1',
+        terminalName: 'Claude Code #1',
+        jsonlFile: '/tmp/sess-1.jsonl',
+        projectDir: '/tmp/proj',
+      },
+    ];
+    adapter.saveAgents(agents);
+    expect(adapter.loadAgents()).toEqual(agents);
+  });
+
+  it('writes state at ~/.pixel-agents/state.json', () => {
+    const adapter = new FileStateAdapter();
+    adapter.saveSeats({ '1': { palette: 2, hueShift: 45 } });
+    const stateFile = path.join(tempHome, '.pixel-agents', 'state.json');
+    expect(fs.existsSync(stateFile)).toBe(true);
+  });
+
+  it('preserves seats when saving agents (and vice versa)', () => {
+    const adapter = new FileStateAdapter();
+    adapter.saveSeats({ '1': { palette: 3 } });
+    adapter.saveAgents([{ id: 1, terminalName: 'x', jsonlFile: '/x.jsonl', projectDir: '/tmp' }]);
+    expect(adapter.loadSeats()).toEqual({ '1': { palette: 3 } });
+    expect(adapter.loadAgents()).toHaveLength(1);
+  });
+});
