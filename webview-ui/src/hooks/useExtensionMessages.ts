@@ -54,6 +54,7 @@ interface ExtensionMessageState {
   selectedAgent: number | null;
   agentTools: Record<number, ToolActivity[]>;
   agentStatuses: Record<number, string>;
+  agentAwaitingInput: Record<number, boolean>;
   subagentTools: Record<number, Record<string, ToolActivity[]>>;
   subagentCharacters: SubagentCharacter[];
   layoutReady: boolean;
@@ -96,6 +97,7 @@ export function useExtensionMessages(
   const [selectedAgent, setSelectedAgent] = useState<number | null>(null);
   const [agentTools, setAgentTools] = useState<Record<number, ToolActivity[]>>({});
   const [agentStatuses, setAgentStatuses] = useState<Record<number, string>>({});
+  const [agentAwaitingInput, setAgentAwaitingInput] = useState<Record<number, boolean>>({});
   const [subagentTools, setSubagentTools] = useState<
     Record<number, Record<string, ToolActivity[]>>
   >({});
@@ -148,6 +150,7 @@ export function useExtensionMessages(
           id: msg.id,
           toolName: msg.toolName,
           status: msg.status,
+          awaitingInput: msg.awaitingInput,
           toolId: msg.toolId,
           parentToolId: msg.parentToolId,
         });
@@ -266,6 +269,12 @@ export function useExtensionMessages(
           return next;
         });
         setAgentStatuses((prev) => {
+          if (!(id in prev)) return prev;
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
+        setAgentAwaitingInput((prev) => {
           if (!(id in prev)) return prev;
           const next = { ...prev };
           delete next[id];
@@ -399,6 +408,15 @@ export function useExtensionMessages(
             return next;
           }
           return { ...prev, [id]: status };
+        });
+        setAgentAwaitingInput((prev) => {
+          if (status === 'active') {
+            if (!(id in prev)) return prev;
+            const next = { ...prev };
+            delete next[id];
+            return next;
+          }
+          return { ...prev, [id]: msg.awaitingInput === true };
         });
         os.setAgentActive(id, status === 'active');
         if (status === 'waiting') {
@@ -602,6 +620,7 @@ export function useExtensionMessages(
     selectedAgent,
     agentTools,
     agentStatuses,
+    agentAwaitingInput,
     subagentTools,
     subagentCharacters,
     layoutReady,

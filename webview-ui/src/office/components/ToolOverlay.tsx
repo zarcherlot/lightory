@@ -33,6 +33,7 @@ interface ToolOverlayProps {
   officeState: OfficeState;
   agents: number[];
   agentTools: Record<number, ToolActivity[]>;
+  agentAwaitingInput: Record<number, boolean>;
   subagentCharacters: SubagentCharacter[];
   containerRef: React.RefObject<HTMLDivElement | null>;
   zoom: number;
@@ -84,6 +85,7 @@ export function ToolOverlay({
   officeState,
   agents,
   agentTools,
+  agentAwaitingInput,
   subagentCharacters,
   containerRef,
   zoom,
@@ -168,6 +170,8 @@ export function ToolOverlay({
         if (hasWaitingBubble && ch.waitingAwaitingInput) {
           // Idle, waiting on the user -> dedicated label. A finished turn (Stop)
           // shows only the checkmark and falls through to the normal idle text.
+          activityText = WAITING_INPUT_ACTIVITY_TEXT;
+        } else if (!isSub && agentAwaitingInput[id]) {
           activityText = WAITING_INPUT_ACTIVITY_TEXT;
         } else if (isSub) {
           if (subHasPermission) {

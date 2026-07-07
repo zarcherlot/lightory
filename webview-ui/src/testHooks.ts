@@ -26,6 +26,7 @@ declare global {
         id?: number;
         toolName?: string;
         status?: string;
+        awaitingInput?: boolean;
         toolId?: string;
         parentToolId?: string;
       }>;
