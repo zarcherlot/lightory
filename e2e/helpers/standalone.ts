@@ -87,7 +87,15 @@ function spawnStandaloneHost(args: {
   }
   return spawn(
     process.execPath,
-    [STANDALONE_CLI, '--port', args.hostPort.toString(), '--host', '127.0.0.1'],
+    [
+      STANDALONE_CLI,
+      '--provider',
+      'claude',
+      '--port',
+      args.hostPort.toString(),
+      '--host',
+      '127.0.0.1',
+    ],
     {
       cwd: args.workspaceDir,
       env: {
