@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { CHARACTER_SITTING_OFFSET_PX, TOOL_OVERLAY_VERTICAL_OFFSET } from '../constants.js';
 import type { OfficeState } from '../office/engine/officeState.js';
 import { CharacterState, TILE_SIZE } from '../office/types.js';
-import type { RoleRuntimeConfig } from '../roleConfig.js';
+import { getRoleConfigSummary, type RoleRuntimeConfig } from '../roleConfig.js';
 import { getRoleAgentId, roleDefinitions } from '../roles.js';
 import { Button } from './ui/Button.js';
 
@@ -490,6 +490,7 @@ export function EducationModeOverlay({
       {roleDefinitions.map((role) => {
         const ch = officeState.characters.get(getRoleAgentId(role.id));
         if (!ch) return null;
+        const configSummary = getRoleConfigSummary(roleConfigs[role.id]);
 
         const sittingOffset =
           ch.state === CharacterState.TYPE || ch.state === CharacterState.BUSY
@@ -551,10 +552,8 @@ export function EducationModeOverlay({
             ))}
             <div className="px-7 py-3 bg-bg-dark/90 border-2 border-border text-xs leading-tight max-w-180 text-center">
               {role.name}
-              {role.id === 'weather' && roleConfigs.weather?.weather ? (
-                <div className="mt-2 text-2xs text-text-muted">
-                  {roleConfigs.weather.weather.city} · {roleConfigs.weather.weather.date}
-                </div>
+              {configSummary ? (
+                <div className="mt-2 text-2xs text-text-muted">{configSummary}</div>
               ) : null}
             </div>
           </div>

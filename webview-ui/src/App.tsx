@@ -167,10 +167,16 @@ function App() {
   const [activeRoleIds, setActiveRoleIds] = useState<Set<string>>(() => new Set());
   const [roleConfigs, setRoleConfigs] = useState<Record<string, RoleRuntimeConfig>>(() => ({
     weather: createDefaultRoleConfig('weather'),
+    dresser: createDefaultRoleConfig('dresser'),
+    travel: createDefaultRoleConfig('travel'),
+    captain: createDefaultRoleConfig('captain'),
   }));
   const [configRoleId, setConfigRoleId] = useState<string | null>(null);
   const roleConfigsRef = useRef<Record<string, RoleRuntimeConfig>>({
     weather: createDefaultRoleConfig('weather'),
+    dresser: createDefaultRoleConfig('dresser'),
+    travel: createDefaultRoleConfig('travel'),
+    captain: createDefaultRoleConfig('captain'),
   });
   const [activeFlowConnections, setActiveFlowConnections] = useState<EducationConnectionPulse[]>(
     [],
