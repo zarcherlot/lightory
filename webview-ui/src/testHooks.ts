@@ -4,7 +4,13 @@ declare global {
   interface Window {
     __lightoryTestHooks?: {
       playedSounds?: Array<{ kind: string; at: number }>;
-      getCharacters?: () => Array<{ id: number; matrixEffect: 'spawn' | 'despawn' | null }>;
+      getCharacters?: () => Array<{
+        id: number;
+        matrixEffect: 'spawn' | 'despawn' | null;
+        bubbleType: 'permission' | 'waiting' | null;
+        waitingAwaitingInput?: boolean;
+        isActive: boolean;
+      }>;
       getPets?: () => Array<{
         id: string;
         name: string;
@@ -66,6 +72,9 @@ export function installTestHooks(officeStateRef: { current: OfficeState | null }
     return Array.from(os.characters.values()).map((ch) => ({
       id: ch.id,
       matrixEffect: ch.matrixEffect,
+      bubbleType: ch.bubbleType,
+      waitingAwaitingInput: ch.waitingAwaitingInput,
+      isActive: ch.isActive,
     }));
   };
 

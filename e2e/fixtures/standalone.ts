@@ -65,6 +65,23 @@ export const test = base.extend<{ standalone: StandaloneContext; _allureLabels: 
         path.join(standalone.tmpHome, '.lightory', 'server.json'),
         'application/json',
       );
+      try {
+        const webviewHooks = await page.evaluate(() => {
+          const hooks = window.__lightoryTestHooks;
+          return {
+            characters: hooks?.getCharacters?.() ?? [],
+            messages: hooks?.messageLog ?? [],
+          };
+        });
+        await attachText(
+          testInfo,
+          'webview-test-hooks',
+          JSON.stringify(webviewHooks, null, 2),
+          'application/json',
+        );
+      } catch {
+        // Hook snapshot failures are non-fatal in teardown.
+      }
 
       try {
         const screenshotPath = testInfo.outputPath('final-screenshot.png');
