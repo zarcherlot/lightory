@@ -151,7 +151,7 @@ When Play mode runs, the browser sends role execution requests to the server. Th
 
 The runner treats obvious role-level failures such as `查询失败`, `无法联网`, and `无法获取` as task errors so dependent roles do not run from bad upstream data.
 
-Codex role tasks run with `--ignore-user-config` so user-level MCP servers do not leak transport errors into role task stderr. If your Codex setup needs a custom model provider, set these variables before starting the server:
+Codex role tasks read your normal Codex user config by default, so local provider and proxy settings match the CLI you already use. If you want role tasks to run with an isolated provider config, set these variables before starting the server:
 
 ```bash
 LIGHTORY_CODEX_MODEL_PROVIDER=my_provider

@@ -21,14 +21,13 @@ describe('roleTaskRunner', () => {
     expect(__test.inferWeatherIcon(output)).toBe(icon);
   });
 
-  it('runs Codex role tasks with isolated user config and stdin prompt', () => {
+  it('runs Codex role tasks with user config by default and stdin prompt', () => {
     const command = __test.buildRoleTaskCommand(codexProvider, 'hello role', 'D:\\repo', 'run-1');
 
     expect(command?.command).toBe('codex');
     expect(command?.args).toEqual(
       expect.arrayContaining([
         'exec',
-        '--ignore-user-config',
         '--sandbox',
         'read-only',
         '--cd',
@@ -37,8 +36,29 @@ describe('roleTaskRunner', () => {
         '-',
       ]),
     );
-    expect(command?.args).not.toContain('model_provider="my_codex"');
+    expect(command?.args).not.toContain('--ignore-user-config');
     expect(command?.input).toBe('hello role');
+  });
+
+  it('isolates user config when LIGHTORY_CODEX_MODEL_PROVIDER is configured', () => {
+    expect(
+      __test.buildCodexRoleTaskIsolationArgs({
+        LIGHTORY_CODEX_MODEL_PROVIDER: 'local_provider',
+      }),
+    ).toEqual(['--ignore-user-config']);
+  });
+
+  it('does not inherit parent Codex runtime environment into role task processes', () => {
+    const env = __test.buildRoleTaskEnv({
+      CODEX_SESSION_ID: 'pixel-role-test',
+      PWD: '/repo',
+    });
+
+    expect(env.CODEX_SESSION_ID).toBe('pixel-role-test');
+    expect(env.PWD).toBe('/repo');
+    expect(env.CODEX_SANDBOX).toBeUndefined();
+    expect(env.CODEX_SANDBOX_NETWORK_DISABLED).toBeUndefined();
+    expect(env.CODEX_THREAD_ID).toBeUndefined();
   });
 
   it('builds Codex config overrides from LIGHTORY_CODEX environment variables', () => {
@@ -97,5 +117,55 @@ describe('roleTaskRunner', () => {
     expect(prompt).toContain('plan-card from captain');
     expect(prompt).toContain('bring a water bottle');
     expect(prompt).toContain('查询杭州明天的天气。');
+  });
+
+  it('parses weather city and relative date from role markdown', () => {
+    expect(
+      __test.parseWeatherQuery('任务：查询上海明天的天气。', new Date('2026-07-07T08:00:00')),
+    ).toEqual({
+      city: '上海',
+      dateText: '明天',
+      date: '2026-07-08',
+    });
+  });
+
+  it('runs weather role tasks through direct weather lookup', async () => {
+    const originalFetch = globalThis.fetch;
+    const calls: string[] = [];
+    globalThis.fetch = (async (input: Parameters<typeof fetch>[0]) => {
+      const url = String(input);
+      calls.push(url);
+      if (url.startsWith('https://geocoding-api.open-meteo.com/')) {
+        return new Response(
+          JSON.stringify({ results: [{ latitude: 31.23, longitude: 121.47, name: '上海' }] }),
+        );
+      }
+      if (url.startsWith('https://api.open-meteo.com/')) {
+        return new Response(
+          JSON.stringify({
+            daily: {
+              time: ['2026-07-08'],
+              weather_code: [61],
+              temperature_2m_max: [31.4],
+              temperature_2m_min: [25.2],
+              precipitation_probability_max: [70],
+              wind_speed_10m_max: [18],
+            },
+          }),
+        );
+      }
+      return new Response('', { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const output = await __test.runWeatherRoleTask('任务：查询上海2026-07-08的天气。');
+
+      expect(output).toContain('天气卡：上海2026-07-08 有雨');
+      expect(output).toContain('温度25°C-31°C');
+      expect(output).toContain('可能下雨（概率70%）');
+      expect(calls).toHaveLength(2);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
