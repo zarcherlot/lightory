@@ -39,7 +39,11 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install Dependencies
-        run: npm ci
+        run: |
+          npm config set fetch-retries 5
+          npm config set fetch-retry-mintimeout 20000
+          npm config set fetch-retry-maxtimeout 120000
+          npm ci || (sleep 10 && npm ci) || (sleep 30 && npm ci)
 
       - name: Generated Messages Drift Check
         run: |
