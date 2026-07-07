@@ -299,12 +299,17 @@ export interface StartRoleTask {
   col: number;
   row: number;
   inputCards?: RoleTaskInputCard[];
+  taskOverride?: RoleTaskOverride;
 }
 
 export interface RoleTaskInputCard {
   sourceRoleId: string;
   card: string;
   content: string;
+}
+
+export interface RoleTaskOverride {
+  markdown: string;
 }
 
 export interface FocusAgent {

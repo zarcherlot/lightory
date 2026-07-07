@@ -699,6 +699,8 @@ components:
           description: Upstream role result cards delivered to this role for the current team run.
           items:
             $ref: '#/components/schemas/RoleTaskInputCard'
+        taskOverride:
+          $ref: '#/components/schemas/RoleTaskOverride'
 
     RoleTaskInputCard:
       description: A result card produced by an upstream role and passed to a downstream role task.
@@ -711,6 +713,15 @@ components:
         card:
           type: string
         content:
+          type: string
+
+    RoleTaskOverride:
+      description: Runtime task markdown supplied by the browser UI instead of reading the default role file.
+      type: object
+      additionalProperties: false
+      required: [markdown]
+      properties:
+        markdown:
           type: string
 
     FocusAgent:
