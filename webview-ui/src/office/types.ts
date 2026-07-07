@@ -152,6 +152,8 @@ export interface Character {
   roleTaskState?: 'idle' | 'busy' | 'weather';
   /** Weather icon shown after a role task completes. */
   weatherIcon?: 'sun' | 'cloud' | 'rain' | 'snow' | 'storm';
+  /** Role-specific icon slot for education role task bubbles. */
+  roleTaskIcon?: RoleTaskIcon;
   /** Timer for rotating busy weather preview icons. */
   roleBusyIconTimer?: number;
   /** Remaining seconds for final weather icon display. */
@@ -214,6 +216,8 @@ export interface Character {
   /** Cumulative output tokens consumed */
   outputTokens: number;
 }
+
+export type RoleTaskIcon = 'weather' | 'dresser' | 'travel' | 'captain' | 'card';
 
 export const PetState = { IDLE: 'idle', WALK: 'walk', FOLLOW: 'follow' } as const;
 export type PetState = (typeof PetState)[keyof typeof PetState];

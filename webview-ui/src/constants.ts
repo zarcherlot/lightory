@@ -84,6 +84,11 @@ export const ROLE_ICON_CLOUD = '#b9c4d8';
 export const ROLE_ICON_RAIN = '#3794ff';
 export const ROLE_ICON_SNOW = '#74b9ff';
 export const ROLE_ICON_STORM = '#ffbf3f';
+export const ROLE_ICON_DRESSER = '#ffb86b';
+export const ROLE_ICON_TRAVEL = '#58c77a';
+export const ROLE_ICON_CAPTAIN = '#9d8cff';
+export const ROLE_ICON_DARK = '#2a2a3a';
+export const ROLE_ICON_LIGHT = '#f8fbff';
 
 // ── Camera ───────────────────────────────────────────────────
 export const CAMERA_FOLLOW_LERP = 0.1;

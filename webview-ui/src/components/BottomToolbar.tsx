@@ -18,9 +18,9 @@ export function BottomToolbar({
       <Button
         variant={isEditMode ? 'active' : 'default'}
         onClick={onToggleEditMode}
-        title="Edit office layout"
+        title={isEditMode ? '切换到 Play 模式' : '切换到编辑模式'}
       >
-        Layout
+        {isEditMode ? '编辑模式' : 'Play 模式'}
       </Button>
       <Button
         variant={isSettingsOpen ? 'active' : 'default'}

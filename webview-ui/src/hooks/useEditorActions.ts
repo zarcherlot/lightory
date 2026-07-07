@@ -42,6 +42,7 @@ interface EditorActions {
   saveTimerRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>;
   setLastSavedLayout: (layout: OfficeLayout) => void;
   handleToggleEditMode: () => void;
+  handleSetEditMode: (isEditMode: boolean) => void;
   handleToolChange: (tool: EditToolType) => void;
   handleTileTypeChange: (type: TileTypeVal) => void;
   handleFloorColorChange: (color: ColorValue) => void;
@@ -68,7 +69,10 @@ export function useEditorActions(
   getOfficeState: () => OfficeState,
   editorState: EditorState,
 ): EditorActions {
-  const [isEditMode, setIsEditMode] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(() => {
+    editorState.isEditMode = true;
+    return true;
+  });
   const [editorTick, setEditorTick] = useState(0);
   const [isDirty, setIsDirty] = useState(false);
   const [zoom, setZoom] = useState(defaultZoom);
@@ -104,9 +108,8 @@ export function useEditorActions(
     [getOfficeState, editorState, saveLayout],
   );
 
-  const handleToggleEditMode = useCallback(() => {
-    setIsEditMode((prev) => {
-      const next = !prev;
+  const handleSetEditMode = useCallback(
+    (next: boolean) => {
       editorState.isEditMode = next;
       if (next) {
         // Initialize wallColor from existing wall tiles so new walls match
@@ -126,9 +129,14 @@ export function useEditorActions(
         editorState.clearDrag();
         wallColorEditActiveRef.current = false;
       }
-      return next;
-    });
-  }, [editorState, getOfficeState]);
+      setIsEditMode(next);
+    },
+    [editorState, getOfficeState],
+  );
+
+  const handleToggleEditMode = useCallback(() => {
+    handleSetEditMode(!editorState.isEditMode);
+  }, [editorState, handleSetEditMode]);
 
   // Tool toggle: clicking already-active tool deselects it (returns to SELECT)
   const handleToolChange = useCallback(
@@ -636,6 +644,7 @@ export function useEditorActions(
     saveTimerRef,
     setLastSavedLayout,
     handleToggleEditMode,
+    handleSetEditMode,
     handleToolChange,
     handleTileTypeChange,
     handleFloorColorChange,

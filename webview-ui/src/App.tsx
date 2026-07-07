@@ -5,6 +5,10 @@ import { BottomToolbar } from './components/BottomToolbar.js';
 import { ChangelogModal } from './components/ChangelogModal.js';
 import { DebugView } from './components/DebugView.js';
 import { EditActionBar } from './components/EditActionBar.js';
+import {
+  type EducationConnection,
+  EducationModeOverlay,
+} from './components/EducationModeOverlay.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
 import { RoleDock } from './components/RoleDock.js';
 import { RoleTaskConsole } from './components/RoleTaskConsole.js';
@@ -24,7 +28,7 @@ import { OfficeState } from './office/engine/officeState.js';
 import { isRotatable } from './office/layout/furnitureCatalog.js';
 import { getPetCount } from './office/sprites/petSpriteData.js';
 import { EditTool } from './office/types.js';
-import { getRoleAgentId, getRoleDefinition } from './roles.js';
+import { getRoleAgentId, getRoleDefinition, roleDefinitions } from './roles.js';
 import { isE2E } from './runtime.js';
 import { installTestHooks } from './testHooks.js';
 import { transport } from './transport/index.js';
@@ -32,6 +36,7 @@ import { transport } from './transport/index.js';
 // Game state lives outside React — updated imperatively by message handlers
 const officeStateRef = { current: null as OfficeState | null };
 const editorState = new EditorState();
+const MAX_ROLE_TASK_ATTEMPTS = 3;
 
 // Test-only observability hooks (message/sound logs, addAgent wrapper, selectAgent).
 // Installed only under the e2e harness so they never patch prototypes or grow
@@ -43,6 +48,52 @@ function getOfficeState(): OfficeState {
     officeStateRef.current = new OfficeState();
   }
   return officeStateRef.current;
+}
+
+function buildRoleRunBatches(
+  activeRoleIds: Set<string>,
+  connections: EducationConnection[],
+): string[][] {
+  const roleOrder = roleDefinitions
+    .map((role) => role.id)
+    .filter((roleId) => activeRoleIds.has(roleId));
+  const active = new Set(roleOrder);
+  const incoming = new Map<string, Set<string>>();
+  const outgoing = new Map<string, Set<string>>();
+
+  for (const roleId of roleOrder) {
+    incoming.set(roleId, new Set());
+    outgoing.set(roleId, new Set());
+  }
+
+  for (const connection of connections) {
+    if (!active.has(connection.sourceRoleId) || !active.has(connection.targetRoleId)) continue;
+    incoming.get(connection.targetRoleId)?.add(connection.sourceRoleId);
+    outgoing.get(connection.sourceRoleId)?.add(connection.targetRoleId);
+  }
+
+  const batches: string[][] = [];
+  const remaining = new Set(roleOrder);
+  while (remaining.size > 0) {
+    const batch = roleOrder.filter(
+      (roleId) =>
+        remaining.has(roleId) &&
+        [...(incoming.get(roleId) ?? [])].every((sourceRoleId) => !remaining.has(sourceRoleId)),
+    );
+    if (batch.length === 0) {
+      batches.push(roleOrder.filter((roleId) => remaining.has(roleId)));
+      break;
+    }
+    batches.push(batch);
+    for (const roleId of batch) {
+      remaining.delete(roleId);
+      for (const targetRoleId of outgoing.get(roleId) ?? []) {
+        incoming.get(targetRoleId)?.delete(roleId);
+      }
+    }
+  }
+
+  return batches;
 }
 
 function App() {
@@ -90,6 +141,7 @@ function App() {
     setHooksEnabled,
     hooksInfoShown,
     roleTaskConsoleEntries,
+    lastRoleTaskStatus,
   } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty);
 
   // Show migration notice once layout reset is detected
@@ -103,6 +155,9 @@ function App() {
   const [isDebugMode, setIsDebugMode] = useState(false);
   const [alwaysShowOverlay, setAlwaysShowOverlay] = useState(false);
   const [activeRoleIds, setActiveRoleIds] = useState<Set<string>>(() => new Set());
+  const runBatchesRef = useRef<string[][]>([]);
+  const runningRoleIdsRef = useRef<Set<string>>(new Set());
+  const roleAttemptCountsRef = useRef<Map<string, number>>(new Map());
 
   const currentMajorMinor = toMajorMinor(extensionVersion);
 
@@ -166,11 +221,79 @@ function App() {
     const id = getRoleAgentId(roleId);
     const os = getOfficeState();
     os.addRoleAgentAtTile(id, role.palette, col, row, role.name);
+    const ch = os.characters.get(id);
+    if (ch) ch.roleTaskIcon = role.roleTaskIcon;
     os.selectedAgentId = id;
     os.cameraFollowId = id;
     setActiveRoleIds((prev) => new Set(prev).add(roleId));
-    transport.send({ type: 'startRoleTask', roleId, col, row });
   }, []);
+
+  const startRoleTask = useCallback((roleId: string) => {
+    const os = getOfficeState();
+    roleAttemptCountsRef.current.set(roleId, (roleAttemptCountsRef.current.get(roleId) ?? 0) + 1);
+    const ch = os.characters.get(getRoleAgentId(roleId));
+    transport.send({
+      type: 'startRoleTask',
+      roleId,
+      col: ch?.tileCol ?? 0,
+      row: ch?.tileRow ?? 0,
+    });
+  }, []);
+
+  const startRoleBatch = useCallback(
+    (roleIds: string[]) => {
+      runningRoleIdsRef.current = new Set(roleIds);
+      for (const roleId of roleIds) {
+        startRoleTask(roleId);
+      }
+    },
+    [startRoleTask],
+  );
+
+  const handleRunTeam = useCallback(
+    (connections: EducationConnection[]) => {
+      if (activeRoleIds.size === 0) return;
+      editor.handleSetEditMode(false);
+      roleAttemptCountsRef.current = new Map();
+      const batches = buildRoleRunBatches(activeRoleIds, connections);
+      const firstBatch = batches.shift();
+      runBatchesRef.current = batches;
+      if (firstBatch) startRoleBatch(firstBatch);
+    },
+    [activeRoleIds, editor, startRoleBatch],
+  );
+
+  useEffect(() => {
+    if (!lastRoleTaskStatus) return;
+    if (lastRoleTaskStatus.status !== 'done' && lastRoleTaskStatus.status !== 'error') return;
+    if (!runningRoleIdsRef.current.has(lastRoleTaskStatus.roleId)) return;
+
+    if (lastRoleTaskStatus.status === 'error') {
+      const attempts = roleAttemptCountsRef.current.get(lastRoleTaskStatus.roleId) ?? 1;
+      if (attempts < MAX_ROLE_TASK_ATTEMPTS) {
+        startRoleTask(lastRoleTaskStatus.roleId);
+        return;
+      }
+
+      runningRoleIdsRef.current = new Set();
+      runBatchesRef.current = [];
+      return;
+    }
+
+    const nextRunning = new Set(runningRoleIdsRef.current);
+    nextRunning.delete(lastRoleTaskStatus.roleId);
+    runningRoleIdsRef.current = nextRunning;
+    if (nextRunning.size > 0) return;
+
+    const nextBatch = runBatchesRef.current.shift();
+    if (nextBatch) {
+      startRoleBatch(nextBatch);
+    }
+  }, [lastRoleTaskStatus, startRoleBatch, startRoleTask]);
+
+  const handleBackToEdit = useCallback(() => {
+    editor.handleSetEditMode(true);
+  }, [editor]);
 
   const officeState = getOfficeState();
 
@@ -286,7 +409,18 @@ function App() {
             alwaysShowOverlay={alwaysShowOverlay}
           />
 
-          {!editor.isEditMode && <RoleDock activeRoleIds={activeRoleIds} />}
+          <EducationModeOverlay
+            officeState={officeState}
+            activeRoleIds={activeRoleIds}
+            isEditMode={editor.isEditMode}
+            containerRef={containerRef}
+            zoom={editor.zoom}
+            panRef={editor.panRef}
+            onRunTeam={handleRunTeam}
+            onBackToEdit={handleBackToEdit}
+          />
+
+          {editor.isEditMode && <RoleDock activeRoleIds={activeRoleIds} />}
         </>
       ) : (
         <DebugView

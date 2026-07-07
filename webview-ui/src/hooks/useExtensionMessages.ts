@@ -69,6 +69,13 @@ interface ExtensionMessageState {
   setHooksEnabled: (v: boolean) => void;
   hooksInfoShown: boolean;
   roleTaskConsoleEntries: RoleTaskConsoleEntry[];
+  lastRoleTaskStatus: RoleTaskStatusEvent | null;
+}
+
+export interface RoleTaskStatusEvent {
+  runId: string;
+  roleId: string;
+  status: 'started' | 'done' | 'error';
 }
 
 function saveAgentSeats(os: OfficeState): void {
@@ -106,6 +113,7 @@ export function useExtensionMessages(
   const [hooksEnabled, setHooksEnabled] = useState(true);
   const [hooksInfoShown, setHooksInfoShown] = useState(true);
   const [roleTaskConsoleEntries, setRoleTaskConsoleEntries] = useState<RoleTaskConsoleEntry[]>([]);
+  const [lastRoleTaskStatus, setLastRoleTaskStatus] = useState<RoleTaskStatusEvent | null>(null);
   const roleTaskConsoleEntryId = useRef(0);
 
   // Track whether initial layout has been loaded (ref to avoid re-render)
@@ -157,6 +165,13 @@ export function useExtensionMessages(
         const roleId = msg.roleId as string;
         const roleAgentId = getRoleAgentId(roleId);
         const status = msg.status as string;
+        if (status === 'started' || status === 'done' || status === 'error') {
+          setLastRoleTaskStatus({
+            runId: msg.runId as string,
+            roleId,
+            status,
+          });
+        }
         if (status === 'started') {
           os.setRoleTaskWorking(roleAgentId);
         } else if (status === 'done') {
@@ -602,5 +617,6 @@ export function useExtensionMessages(
     setHooksEnabled,
     hooksInfoShown,
     roleTaskConsoleEntries,
+    lastRoleTaskStatus,
   };
 }

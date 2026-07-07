@@ -827,7 +827,7 @@ export function OfficeCanvas({
 
   const handleDragOver = useCallback(
     (e: React.DragEvent) => {
-      if (!onRoleDrop || isEditMode) return;
+      if (!onRoleDrop || !isEditMode) return;
       if (!e.dataTransfer.types.includes('application/x-pixel-role')) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = 'copy';
@@ -837,7 +837,7 @@ export function OfficeCanvas({
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
-      if (!onRoleDrop || isEditMode) return;
+      if (!onRoleDrop || !isEditMode) return;
       const roleId = e.dataTransfer.getData('application/x-pixel-role');
       if (!roleId) return;
       const tile = screenToTile(e.clientX, e.clientY);

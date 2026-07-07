@@ -8,12 +8,10 @@ import type { HookProvider } from '../../core/src/provider.js';
 type WsSend = (message: Record<string, unknown>) => void;
 
 const ROLE_TASK_FILES: Record<string, string> = {
-  planner: 'planner.md',
-  researcher: 'researcher.md',
-  architect: 'architect.md',
-  builder: 'builder.md',
-  reviewer: 'reviewer.md',
-  tester: 'tester.md',
+  weather: 'weather.md',
+  dresser: 'dresser.md',
+  travel: 'travel.md',
+  captain: 'captain.md',
 };
 
 export interface RoleTaskRunnerOptions {
@@ -110,19 +108,27 @@ export function createRoleTaskRunner(options: RoleTaskRunnerOptions) {
     });
 
     child.on('close', (code, signal) => {
-      const ok = code === 0;
+      const output = readTaskOutput(command.outputPath) || stdout.trim();
+      const semanticFailure = isRoleTaskFailureOutput(output);
+      const ok = code === 0 && !semanticFailure;
       const hint =
         code === 127 && options.provider.id === 'opencode'
           ? missingCommandHint(options.provider.id)
           : '';
-      const output = readTaskOutput(command.outputPath) || stdout.trim();
       const errorOutput = stderr.trim() || stdout.trim();
       const content =
         signal !== null
           ? `Task stopped by signal ${signal}.`
           : ok
             ? output
-            : [errorOutput, `Task exited with code ${code ?? 'unknown'}.`, hint]
+            : [
+                semanticFailure ? output : errorOutput,
+                semanticFailure
+                  ? 'Task output indicates the role did not complete successfully.'
+                  : '',
+                semanticFailure ? '' : `Task exited with code ${code ?? 'unknown'}.`,
+                hint,
+              ]
                 .filter(Boolean)
                 .join('\n');
       emitStatus(ok ? 'done' : 'error', ok ? inferWeatherIcon(output) : undefined);
@@ -134,6 +140,21 @@ export function createRoleTaskRunner(options: RoleTaskRunnerOptions) {
       cleanupTaskOutput(command.outputPath);
     });
   };
+}
+
+function isRoleTaskFailureOutput(output: string): boolean {
+  const normalized = output.trim().toLowerCase();
+  if (!normalized) return true;
+  return [
+    '查询失败',
+    '无法联网',
+    '无法获取',
+    '稍后重新查询',
+    'failed to',
+    'cannot access',
+    'could not',
+    'unable to',
+  ].some((token) => normalized.includes(token));
 }
 
 function buildRoleTaskCommand(

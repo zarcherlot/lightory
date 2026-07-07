@@ -43,6 +43,11 @@
   /* Non-utility values */
   --vignette: radial-gradient(ellipse at center, transparent 50%, rgba(0, 0, 0, 0.6) 100%);
   --btn-disabled-opacity: 0.35;
+  --education-card-weather: #68d8ff;
+  --education-card-dresser: #ffb86b;
+  --education-card-travel: #89d185;
+  --education-card-plan: #b99cff;
+  --education-card-label-stroke: rgba(10, 10, 20, 0.85);
 }
 
 @theme inline {
@@ -115,6 +120,10 @@
   .pixel-pulse {
     animation: pixel-pulse 1.5s ease-in-out infinite;
   }
+
+  .education-connection-feedback {
+    animation: education-connection-feedback 1.8s ease-out forwards;
+  }
 }
 
 @keyframes pixel-pulse {
@@ -124,5 +133,24 @@
   }
   50% {
     opacity: 0.3;
+  }
+}
+
+@keyframes education-connection-feedback {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  14% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  76% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-4px);
   }
 }

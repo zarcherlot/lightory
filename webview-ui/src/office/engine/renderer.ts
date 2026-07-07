@@ -26,12 +26,17 @@ import {
   ROLE_BUSY_ICON_FRAME_SEC,
   ROLE_ICON_BG,
   ROLE_ICON_BORDER,
+  ROLE_ICON_CAPTAIN,
   ROLE_ICON_CLOUD,
+  ROLE_ICON_DARK,
+  ROLE_ICON_DRESSER,
+  ROLE_ICON_LIGHT,
   ROLE_ICON_RAIN,
   ROLE_ICON_SNOW,
   ROLE_ICON_STORM,
   ROLE_ICON_SUN,
   ROLE_ICON_SUN_RAY,
+  ROLE_ICON_TRAVEL,
   ROTATE_BUTTON_BG,
   SEAT_AVAILABLE_COLOR,
   SEAT_BUSY_COLOR,
@@ -597,7 +602,7 @@ function renderRoleTaskIcons(
     ctx.fill();
     ctx.stroke();
 
-    if (ch.roleTaskState === 'busy') {
+    if (ch.roleTaskState === 'busy' && ch.roleTaskIcon === 'weather') {
       const icons: Array<'sun' | 'cloud' | 'rain' | 'snow' | 'storm'> = [
         'sun',
         'cloud',
@@ -607,11 +612,100 @@ function renderRoleTaskIcons(
       ];
       const frame = Math.floor((ch.roleBusyIconTimer ?? 0) / ROLE_BUSY_ICON_FRAME_SEC);
       drawWeatherIcon(ctx, x, y, size, icons[frame % icons.length]);
-    } else {
+    } else if (ch.roleTaskIcon === 'weather') {
       drawWeatherIcon(ctx, x, y, size, ch.weatherIcon ?? 'cloud');
+    } else {
+      drawEducationRoleIcon(ctx, x, y, size, ch.roleTaskIcon ?? 'card');
     }
     ctx.restore();
   }
+}
+
+function drawEducationRoleIcon(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  size: number,
+  icon: NonNullable<Character['roleTaskIcon']>,
+): void {
+  if (icon === 'dresser') {
+    drawDresserIcon(ctx, x, y, size);
+    return;
+  }
+  if (icon === 'travel') {
+    drawTravelIcon(ctx, x, y, size);
+    return;
+  }
+  if (icon === 'captain') {
+    drawCaptainIcon(ctx, x, y, size);
+    return;
+  }
+  drawCardIcon(ctx, x, y, size);
+}
+
+function drawDresserIcon(ctx: CanvasRenderingContext2D, x: number, y: number, size: number): void {
+  ctx.fillStyle = ROLE_ICON_DRESSER;
+  ctx.beginPath();
+  ctx.moveTo(x + size * 0.36, y + size * 0.25);
+  ctx.lineTo(x + size * 0.47, y + size * 0.34);
+  ctx.lineTo(x + size * 0.53, y + size * 0.34);
+  ctx.lineTo(x + size * 0.64, y + size * 0.25);
+  ctx.lineTo(x + size * 0.82, y + size * 0.42);
+  ctx.lineTo(x + size * 0.7, y + size * 0.55);
+  ctx.lineTo(x + size * 0.66, y + size * 0.48);
+  ctx.lineTo(x + size * 0.66, y + size * 0.78);
+  ctx.lineTo(x + size * 0.34, y + size * 0.78);
+  ctx.lineTo(x + size * 0.34, y + size * 0.48);
+  ctx.lineTo(x + size * 0.3, y + size * 0.55);
+  ctx.lineTo(x + size * 0.18, y + size * 0.42);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = ROLE_ICON_DARK;
+  ctx.lineWidth = Math.max(1, size * 0.055);
+  ctx.stroke();
+}
+
+function drawTravelIcon(ctx: CanvasRenderingContext2D, x: number, y: number, size: number): void {
+  ctx.strokeStyle = ROLE_ICON_DARK;
+  ctx.lineWidth = Math.max(1, size * 0.06);
+  ctx.beginPath();
+  ctx.arc(x + size * 0.5, y + size * 0.33, size * 0.14, Math.PI, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = ROLE_ICON_TRAVEL;
+  ctx.fillRect(x + size * 0.32, y + size * 0.36, size * 0.36, size * 0.42);
+  ctx.strokeRect(x + size * 0.32, y + size * 0.36, size * 0.36, size * 0.42);
+  ctx.fillStyle = ROLE_ICON_LIGHT;
+  ctx.fillRect(x + size * 0.39, y + size * 0.52, size * 0.22, size * 0.12);
+}
+
+function drawCaptainIcon(ctx: CanvasRenderingContext2D, x: number, y: number, size: number): void {
+  ctx.fillStyle = ROLE_ICON_CAPTAIN;
+  ctx.fillRect(x + size * 0.3, y + size * 0.26, size * 0.4, size * 0.52);
+  ctx.strokeStyle = ROLE_ICON_DARK;
+  ctx.lineWidth = Math.max(1, size * 0.055);
+  ctx.strokeRect(x + size * 0.3, y + size * 0.26, size * 0.4, size * 0.52);
+  ctx.fillStyle = ROLE_ICON_DARK;
+  ctx.fillRect(x + size * 0.4, y + size * 0.2, size * 0.2, size * 0.11);
+  ctx.strokeStyle = ROLE_ICON_LIGHT;
+  ctx.lineWidth = Math.max(1, size * 0.045);
+  for (const row of [0.42, 0.56, 0.7]) {
+    ctx.beginPath();
+    ctx.moveTo(x + size * 0.38, y + size * row);
+    ctx.lineTo(x + size * 0.44, y + size * (row + 0.05));
+    ctx.lineTo(x + size * 0.62, y + size * (row - 0.04));
+    ctx.stroke();
+  }
+}
+
+function drawCardIcon(ctx: CanvasRenderingContext2D, x: number, y: number, size: number): void {
+  ctx.fillStyle = ROLE_ICON_LIGHT;
+  ctx.fillRect(x + size * 0.28, y + size * 0.28, size * 0.44, size * 0.48);
+  ctx.strokeStyle = ROLE_ICON_DARK;
+  ctx.lineWidth = Math.max(1, size * 0.055);
+  ctx.strokeRect(x + size * 0.28, y + size * 0.28, size * 0.44, size * 0.48);
+  ctx.fillStyle = ROLE_ICON_DARK;
+  ctx.fillRect(x + size * 0.36, y + size * 0.42, size * 0.28, size * 0.06);
+  ctx.fillRect(x + size * 0.36, y + size * 0.56, size * 0.22, size * 0.06);
 }
 
 function drawWeatherIcon(
