@@ -151,6 +151,18 @@ When Play mode runs, the browser sends role execution requests to the server. Th
 
 The runner treats obvious role-level failures such as `查询失败`, `无法联网`, and `无法获取` as task errors so dependent roles do not run from bad upstream data.
 
+Codex role tasks run with `--ignore-user-config` so user-level MCP servers do not leak transport errors into role task stderr. If your Codex setup needs a custom model provider, set these variables before starting the server:
+
+```bash
+LIGHTORY_CODEX_MODEL_PROVIDER=my_provider
+LIGHTORY_CODEX_MODEL=gpt-5.5
+LIGHTORY_CODEX_REASONING_EFFORT=medium
+LIGHTORY_CODEX_PROVIDER_NAME=my_provider
+LIGHTORY_CODEX_PROVIDER_BASE_URL=https://example.com/v1
+LIGHTORY_CODEX_PROVIDER_WIRE_API=responses
+LIGHTORY_CODEX_PROVIDER_REQUIRES_OPENAI_AUTH=true
+```
+
 ## Provider Hooks
 
 Codex hooks are installed into `~/.codex/config.toml` and call Lightory's bundled hook script from `~/.lightory/hooks/`.

@@ -4,7 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 
 import type { HookProvider } from '../../core/src/provider.js';
-import type { RoleTaskInputCard } from './clientMessageHandler.js';
+import type { RoleTaskInputCard, RoleTaskOverride } from './clientMessageHandler.js';
 
 type WsSend = (message: Record<string, unknown>) => void;
 
@@ -15,6 +15,15 @@ const ROLE_TASK_FILES: Record<string, string> = {
   captain: 'captain.md',
 };
 const ROLE_TASK_TIMEOUT_MS = 120_000;
+const CODEX_ROLE_TASK_ENV = {
+  modelProvider: 'LIGHTORY_CODEX_MODEL_PROVIDER',
+  model: 'LIGHTORY_CODEX_MODEL',
+  reasoningEffort: 'LIGHTORY_CODEX_REASONING_EFFORT',
+  providerName: 'LIGHTORY_CODEX_PROVIDER_NAME',
+  providerBaseUrl: 'LIGHTORY_CODEX_PROVIDER_BASE_URL',
+  providerWireApi: 'LIGHTORY_CODEX_PROVIDER_WIRE_API',
+  providerRequiresOpenAiAuth: 'LIGHTORY_CODEX_PROVIDER_REQUIRES_OPENAI_AUTH',
+} as const;
 
 export interface RoleTaskRunnerOptions {
   provider: HookProvider;
@@ -32,7 +41,12 @@ interface CommandSpec {
 }
 
 export function createRoleTaskRunner(options: RoleTaskRunnerOptions) {
-  return (roleId: string, send: WsSend, inputCards: RoleTaskInputCard[] = []): void => {
+  return (
+    roleId: string,
+    send: WsSend,
+    inputCards: RoleTaskInputCard[] = [],
+    taskOverride?: RoleTaskOverride,
+  ): void => {
     const relativeTaskFile = ROLE_TASK_FILES[roleId];
     const runId = `${roleId}-${Date.now().toString(36)}`;
 
@@ -50,7 +64,7 @@ export function createRoleTaskRunner(options: RoleTaskRunnerOptions) {
     }
 
     const taskPath = path.join(options.rolesDir, relativeTaskFile);
-    if (!fs.existsSync(taskPath)) {
+    if (!taskOverride && !fs.existsSync(taskPath)) {
       emitStatus('error');
       emit({
         status: 'error',
@@ -60,18 +74,8 @@ export function createRoleTaskRunner(options: RoleTaskRunnerOptions) {
       return;
     }
 
-    const taskMarkdown = fs.readFileSync(taskPath, 'utf8');
-    const prompt = [
-      `Execute this ${roleId} role task using only the task text below.`,
-      '',
-      'Do not read local files. Do not list directories. Do not run shell commands.',
-      'If the task needs current weather, use built-in web search only.',
-      'Return only the final child-friendly card or checklist text.',
-      '',
-      formatInputCards(inputCards),
-      '',
-      taskMarkdown,
-    ].join('\n');
+    const taskMarkdown = taskOverride?.markdown ?? fs.readFileSync(taskPath, 'utf8');
+    const prompt = buildRoleTaskPrompt(roleId, taskMarkdown, inputCards);
     const command = buildRoleTaskCommand(options.provider, prompt, options.cwd, runId);
     if (!command) {
       emitStatus('error');
@@ -194,6 +198,24 @@ function formatInputCards(inputCards: RoleTaskInputCard[]): string {
   ].join('\n');
 }
 
+function buildRoleTaskPrompt(
+  roleId: string,
+  taskMarkdown: string,
+  inputCards: RoleTaskInputCard[],
+): string {
+  return [
+    `Execute this ${roleId} role task using only the task text below.`,
+    '',
+    'Do not read local files. Do not list directories. Do not run shell commands.',
+    'If the task needs current weather, use built-in web search only.',
+    'Return only the final child-friendly card or checklist text.',
+    '',
+    formatInputCards(inputCards),
+    '',
+    taskMarkdown,
+  ].join('\n');
+}
+
 function traceRoleTaskStderr(
   providerId: string,
   runId: string,
@@ -241,20 +263,7 @@ function buildRoleTaskCommand(
           'never',
           '--sandbox',
           'read-only',
-          '-c',
-          'model_provider="my_codex"',
-          '-c',
-          'model="gpt-5.5"',
-          '-c',
-          'model_reasoning_effort="medium"',
-          '-c',
-          'model_providers.my_codex.name="my_codex"',
-          '-c',
-          'model_providers.my_codex.base_url="https://tokenrain.ai/v1"',
-          '-c',
-          'model_providers.my_codex.wire_api="responses"',
-          '-c',
-          'model_providers.my_codex.requires_openai_auth=true',
+          ...buildCodexRoleTaskConfigArgs(),
           '--cd',
           cwd,
           '--output-last-message',
@@ -276,6 +285,40 @@ function buildRoleTaskCommand(
     default:
       return null;
   }
+}
+
+function buildCodexRoleTaskConfigArgs(env: NodeJS.ProcessEnv = process.env): string[] {
+  const args: string[] = [];
+  const addConfig = (value: string | undefined, key: string, format = tomlString) => {
+    if (!value) return;
+    args.push('-c', `${key}=${format(value)}`);
+  };
+
+  const providerId = env[CODEX_ROLE_TASK_ENV.modelProvider];
+  addConfig(providerId, 'model_provider');
+  addConfig(env[CODEX_ROLE_TASK_ENV.model], 'model');
+  addConfig(env[CODEX_ROLE_TASK_ENV.reasoningEffort], 'model_reasoning_effort');
+
+  if (providerId) {
+    addConfig(env[CODEX_ROLE_TASK_ENV.providerName], `model_providers.${providerId}.name`);
+    addConfig(env[CODEX_ROLE_TASK_ENV.providerBaseUrl], `model_providers.${providerId}.base_url`);
+    addConfig(env[CODEX_ROLE_TASK_ENV.providerWireApi], `model_providers.${providerId}.wire_api`);
+    addConfig(
+      env[CODEX_ROLE_TASK_ENV.providerRequiresOpenAiAuth],
+      `model_providers.${providerId}.requires_openai_auth`,
+      tomlBoolean,
+    );
+  }
+
+  return args;
+}
+
+function tomlString(value: string): string {
+  return JSON.stringify(value);
+}
+
+function tomlBoolean(value: string): string {
+  return /^(1|true|yes)$/i.test(value) ? 'true' : 'false';
 }
 
 function errorMessageHasMissingCommand(error: Error): boolean {
@@ -317,4 +360,10 @@ function hasAny(text: string, needles: string[]): boolean {
   return needles.some((needle) => text.includes(needle));
 }
 
-export const __test = { inferWeatherIcon };
+export const __test = {
+  buildCodexRoleTaskConfigArgs,
+  buildRoleTaskCommand,
+  buildRoleTaskPrompt,
+  formatInputCards,
+  inferWeatherIcon,
+};
