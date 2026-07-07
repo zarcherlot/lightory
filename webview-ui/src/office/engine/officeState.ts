@@ -1083,8 +1083,9 @@ export class OfficeState {
         }
       }
 
-      // Tick bubble timer for waiting bubbles
-      if (ch.bubbleType === 'waiting') {
+      // Turn-complete bubbles are short-lived, but an idle prompt is a durable
+      // "waiting on user" state and must not disappear due to a delayed frame.
+      if (ch.bubbleType === 'waiting' && !ch.waitingAwaitingInput) {
         ch.bubbleTimer -= dt;
         if (ch.bubbleTimer <= 0) {
           ch.bubbleType = null;
