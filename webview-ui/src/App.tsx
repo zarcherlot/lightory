@@ -30,7 +30,12 @@ import { isRotatable } from './office/layout/furnitureCatalog.js';
 import { getPetCount } from './office/sprites/petSpriteData.js';
 import { EditTool } from './office/types.js';
 import { createDefaultRoleConfig, type RoleRuntimeConfig } from './roleConfig.js';
-import { getRoleAgentId, getRoleDefinition, roleDefinitions } from './roles.js';
+import {
+  getRoleAgentId,
+  getRoleDefinition,
+  newsSummaryRoleDefinitions,
+  roleDefinitions,
+} from './roles.js';
 import { isE2E } from './runtime.js';
 import { installTestHooks } from './testHooks.js';
 import { transport } from './transport/index.js';
@@ -186,6 +191,29 @@ function App() {
   useEffect(() => {
     roleConfigsRef.current = roleConfigs;
   }, [roleConfigs]);
+
+  useEffect(() => {
+    if (!layoutReady) return;
+
+    const newsRoleIds = new Set(newsSummaryRoleDefinitions.map((role) => role.id));
+    const os = getOfficeState();
+
+    for (const role of roleDefinitions) {
+      if (newsRoleIds.has(role.id)) continue;
+
+      const roleAgentId = getRoleAgentId(role.id);
+      const ch = os.characters.get(roleAgentId);
+      if (ch?.seatId) {
+        const seat = os.seats.get(ch.seatId);
+        if (seat) seat.assigned = false;
+      }
+      os.characters.delete(roleAgentId);
+      if (os.selectedAgentId === roleAgentId) os.selectedAgentId = null;
+      if (os.cameraFollowId === roleAgentId) os.cameraFollowId = null;
+    }
+
+    setActiveRoleIds((prev) => new Set([...prev].filter((roleId) => newsRoleIds.has(roleId))));
+  }, [layoutReady]);
 
   const handleWhatsNewDismiss = useCallback(() => {
     transport.send({ type: 'setLastSeenVersion', version: currentMajorMinor });

@@ -221,7 +221,7 @@ const GENERIC_ROLE_PROFILES: Record<
     cardName: '热点新闻卡',
     defaultTopic: '暑假每日新闻摘抄',
     defaultStyle: '客观、简短、适合继续筛选',
-    defaultInclude: '5条候选新闻、每条一句摘要、来源或时间线索',
+    defaultInclude: '第一行写“已完成，找到<数量>条热点新闻”，然后输出热点新闻卡，不输出传递说明',
   },
   newsFilter: {
     heading: '新闻过滤员任务',
@@ -229,15 +229,17 @@ const GENERIC_ROLE_PROFILES: Record<
     cardName: '适合摘抄卡',
     defaultTopic: '筛选小学生可摘抄新闻',
     defaultStyle: '谨慎、清楚、保护儿童阅读体验',
-    defaultInclude: '保留新闻、过滤新闻、过滤原因',
+    defaultInclude:
+      '第一行写“已完成，筛选出<数量>条适合摘抄新闻”，然后输出适合摘抄卡，不输出传递说明',
   },
   copyworkPicker: {
     heading: '摘抄推荐员任务',
-    persona: '你是摘抄推荐员，负责把适合摘抄的新闻整理成学生可以选择的少量选项。',
+    persona: '你是摘抄推荐员，负责把新闻过滤员筛选后的新闻条目整理成可勾选新闻信息。',
     cardName: '候选新闻卡',
-    defaultTopic: '给学生推荐今天可摘抄的新闻',
-    defaultStyle: '选择简单、表达积极、便于手抄',
-    defaultInclude: 'A/B/C三个选项、推荐理由、摘抄句',
+    defaultTopic: '给学生推荐今天可摘抄的新闻信息',
+    defaultStyle: '清楚、简短、便于阅读',
+    defaultInclude:
+      '第一行写“已完成，整理出<数量>条新闻信息”，每条新闻信息约30个汉字，输出新闻信息和适合原因，不输出新闻主题',
   },
 };
 

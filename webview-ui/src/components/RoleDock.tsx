@@ -1,4 +1,4 @@
-import { roleDefinitions } from '../roles.js';
+import { newsSummaryRoleDefinitions } from '../roles.js';
 
 interface RoleDockProps {
   activeRoleIds: Set<string>;
@@ -7,7 +7,7 @@ interface RoleDockProps {
 export function RoleDock({ activeRoleIds }: RoleDockProps) {
   return (
     <div className="role-dock-shell absolute left-1/2 bottom-210 -translate-x-1/2 z-20 px-8 py-6 bg-bg border-2 border-border shadow-pixel flex gap-8 overflow-x-auto overscroll-x-contain">
-      {roleDefinitions.map((role) => {
+      {newsSummaryRoleDefinitions.map((role) => {
         const active = activeRoleIds.has(role.id);
         return (
           <button

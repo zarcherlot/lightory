@@ -7,6 +7,7 @@ import type { HookProvider } from '../../core/src/provider.js';
 import type { RoleTaskInputCard, RoleTaskOverride } from './clientMessageHandler.js';
 
 type WsSend = (message: Record<string, unknown>) => void;
+type RoleProgressTimer = ReturnType<typeof setInterval>;
 
 const ROLE_TASK_FILES: Record<string, string> = {
   weather: 'weather.md',
@@ -28,6 +29,7 @@ const ROLE_TASK_FILES: Record<string, string> = {
 };
 const ROLE_TASK_TIMEOUT_MS = 120_000;
 const WEATHER_LOOKUP_TIMEOUT_MS = 6_000;
+const ROLE_PROGRESS_INTERVAL_MS = 9_000;
 const CODEX_ROLE_TASK_ENV = {
   modelProvider: 'LIGHTORY_CODEX_MODEL_PROVIDER',
   model: 'LIGHTORY_CODEX_MODEL',
@@ -66,6 +68,13 @@ export function createRoleTaskRunner(options: RoleTaskRunnerOptions) {
     const emit = (message: Record<string, unknown>) => {
       send({ type: 'roleTaskConsole', runId, roleId, ...message });
     };
+    const emitProgress = (content: string) => {
+      emit({
+        status: 'running',
+        stream: 'system',
+        content: content.endsWith('\n') ? content : `${content}\n`,
+      });
+    };
     const emitStatus = (status: string, weatherIcon?: string) => {
       send({ type: 'roleTaskStatus', runId, roleId, status, weatherIcon });
     };
@@ -101,6 +110,17 @@ export function createRoleTaskRunner(options: RoleTaskRunnerOptions) {
     }
 
     emitStatus('started');
+    emitProgress(getRoleProgressMessages(roleId)[0]);
+    let progressIndex = 1;
+    const progressTimer: RoleProgressTimer = setInterval(() => {
+      const messages = getRoleProgressMessages(roleId);
+      emitProgress(messages[progressIndex % messages.length]);
+      progressIndex += 1;
+    }, ROLE_PROGRESS_INTERVAL_MS);
+
+    const stopProgressTimer = () => {
+      clearInterval(progressTimer);
+    };
 
     const child = spawn(command.command, command.args, {
       cwd: options.cwd,
@@ -115,6 +135,7 @@ export function createRoleTaskRunner(options: RoleTaskRunnerOptions) {
     let settled = false;
     const timeout = setTimeout(() => {
       timedOut = true;
+      stopProgressTimer();
       emitStatus('error');
       emit({
         status: 'error',
@@ -144,6 +165,7 @@ export function createRoleTaskRunner(options: RoleTaskRunnerOptions) {
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
+      stopProgressTimer();
       const commandName = command.displayCommand ?? command.command;
       const hint = errorMessageHasMissingCommand(error)
         ? missingCommandHint(options.provider.id)
@@ -160,6 +182,7 @@ export function createRoleTaskRunner(options: RoleTaskRunnerOptions) {
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
+      stopProgressTimer();
       if (timedOut) {
         cleanupTaskOutput(command.outputPath);
         return;
@@ -254,6 +277,37 @@ function isRoleTaskFailureOutput(output: string): boolean {
     'could not',
     'unable to',
   ].some((token) => normalized.includes(token));
+}
+
+function getRoleProgressMessages(roleId: string): string[] {
+  const messages: Record<string, string[]> = {
+    newsCollector: [
+      '趣味广播：新闻收集员戴上小耳机，正在扫描今天的热点雷达。',
+      '趣味广播：正在把大新闻压缩成小朋友能读懂的一句话。',
+      '趣味广播：正在核对来源线索，避免把传闻装进新闻篮子。',
+      '趣味广播：热点新闻快装箱完成，准备交给过滤员。',
+    ],
+    newsFilter: [
+      '趣味广播：新闻过滤员打开温柔滤镜，先保护小朋友的阅读体验。',
+      '趣味广播：正在把惊吓、低俗和不确定内容放进回收箱。',
+      '趣味广播：正在挑选积极、清楚、适合摘抄的新闻条目。',
+      '趣味广播：适合摘抄卡快整理好了，准备递给摘抄推荐员。',
+    ],
+    copyworkPicker: [
+      '趣味广播：摘抄推荐员铺开小纸条，正在排列候选新闻。',
+      '趣味广播：正在保持过滤员的原始条目，不偷偷添加新新闻。',
+      '趣味广播：正在把新闻条目整理成 TUI 里好勾选的样子。',
+      '趣味广播：候选新闻卡快展示好了，可以准备摘抄。',
+    ],
+  };
+
+  return (
+    messages[roleId] ?? [
+      '趣味广播：角色已经进入工作状态，正在整理任务线索。',
+      '趣味广播：正在检查上游卡片，确保信息接力不断线。',
+      '趣味广播：结果卡正在生成，请稍等片刻。',
+    ]
+  );
 }
 
 interface WeatherQuery {
@@ -587,6 +641,7 @@ export const __test = {
   buildRoleTaskPrompt,
   describeWeatherCode,
   formatInputCards,
+  getRoleProgressMessages,
   inferWeatherIcon,
   parseWeatherQuery,
   runWeatherRoleTask,

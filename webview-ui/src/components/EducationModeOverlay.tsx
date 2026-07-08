@@ -4,7 +4,7 @@ import { CHARACTER_SITTING_OFFSET_PX, TOOL_OVERLAY_VERTICAL_OFFSET } from '../co
 import type { OfficeState } from '../office/engine/officeState.js';
 import { CharacterState, TILE_SIZE } from '../office/types.js';
 import { getRoleConfigSummary, type RoleRuntimeConfig } from '../roleConfig.js';
-import { getRoleAgentId, roleDefinitions } from '../roles.js';
+import { getRoleAgentId, newsSummaryRoleDefinitions } from '../roles.js';
 import { Button } from './ui/Button.js';
 
 const CARD_COLORS: Record<string, string> = {
@@ -189,9 +189,9 @@ export function EducationModeOverlay({
   const mapH = layout.rows * TILE_SIZE * zoom;
   const deviceOffsetX = Math.floor((canvasW - mapW) / 2) + Math.round(panRef.current.x);
   const deviceOffsetY = Math.floor((canvasH - mapH) / 2) + Math.round(panRef.current.y);
-  const placedRoles = roleDefinitions.filter((role) => activeRoleIds.has(role.id));
+  const placedRoles = newsSummaryRoleDefinitions.filter((role) => activeRoleIds.has(role.id));
   const canRun = placedRoles.length > 0;
-  const rolePositions: RolePosition[] = roleDefinitions
+  const rolePositions: RolePosition[] = newsSummaryRoleDefinitions
     .map((role) => {
       const ch = officeState.characters.get(getRoleAgentId(role.id));
       if (!ch) return null;
@@ -316,7 +316,7 @@ export function EducationModeOverlay({
   };
 
   const getFailureText = (card: string, targetRoleId: string) => {
-    const target = roleDefinitions.find((role) => role.id === targetRoleId);
+    const target = newsSummaryRoleDefinitions.find((role) => role.id === targetRoleId);
     const acceptingRole = placedRoles.find((role) => (ACCEPTS_CARD[role.id] ?? []).includes(card));
     if (acceptingRole)
       return `${target?.name ?? '这个角色'}不需要${card}，可以交给${acceptingRole.name}。`;
@@ -583,7 +583,7 @@ export function EducationModeOverlay({
         </div>
       )}
 
-      {roleDefinitions.map((role) => {
+      {newsSummaryRoleDefinitions.map((role) => {
         const ch = officeState.characters.get(getRoleAgentId(role.id));
         if (!ch) return null;
         const configSummary = getRoleConfigSummary(roleConfigs[role.id]);

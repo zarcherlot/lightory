@@ -193,6 +193,10 @@ export const roleDefinitions: RoleDefinition[] = [
   },
 ];
 
+export const newsSummaryRoleDefinitions = roleDefinitions.filter((role) =>
+  ['newsCollector', 'newsFilter', 'copyworkPicker'].includes(role.id),
+);
+
 export function getRoleAgentId(roleId: string): number {
   const index = roleDefinitions.findIndex((role) => role.id === roleId);
   return ROLE_AGENT_ID_BASE + Math.max(0, index);

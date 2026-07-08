@@ -119,6 +119,13 @@ describe('roleTaskRunner', () => {
     expect(prompt).toContain('查询杭州明天的天气。');
   });
 
+  it('provides role-specific progress messages for news tasks', () => {
+    expect(__test.getRoleProgressMessages('newsCollector')[0]).toContain('新闻收集员');
+    expect(__test.getRoleProgressMessages('newsFilter')[0]).toContain('新闻过滤员');
+    expect(__test.getRoleProgressMessages('copyworkPicker')[0]).toContain('摘抄推荐员');
+    expect(__test.getRoleProgressMessages('unknown-role')[0]).toContain('角色已经进入工作状态');
+  });
+
   it('parses weather city and relative date from role markdown', () => {
     expect(
       __test.parseWeatherQuery('任务：查询上海明天的天气。', new Date('2026-07-07T08:00:00')),
