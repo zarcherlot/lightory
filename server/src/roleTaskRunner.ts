@@ -22,6 +22,9 @@ const ROLE_TASK_FILES: Record<string, string> = {
   checker: 'checker.md',
   summarizer: 'summarizer.md',
   questioner: 'questioner.md',
+  newsCollector: 'news-collector.md',
+  newsFilter: 'news-filter.md',
+  copyworkPicker: 'copywork-picker.md',
 };
 const ROLE_TASK_TIMEOUT_MS = 120_000;
 const WEATHER_LOOKUP_TIMEOUT_MS = 6_000;
@@ -85,27 +88,6 @@ export function createRoleTaskRunner(options: RoleTaskRunnerOptions) {
     }
 
     const taskMarkdown = taskOverride?.markdown ?? fs.readFileSync(taskPath, 'utf8');
-    if (roleId === 'weather') {
-      emitStatus('started');
-      void runWeatherRoleTask(taskMarkdown)
-        .then((output) => {
-          const failed = isRoleTaskFailureOutput(output);
-          emit({
-            status: failed ? 'error' : 'done',
-            stream: failed ? 'stderr' : 'stdout',
-            content: output.endsWith('\n') ? output : `${output}\n`,
-          });
-          emitStatus(failed ? 'error' : 'done', failed ? undefined : inferWeatherIcon(output));
-        })
-        .catch((error: unknown) => {
-          const message = error instanceof Error ? error.message : String(error);
-          const output = `天气卡：查询失败，天气服务暂时没有返回结果。请稍后重新查询。${message ? ` (${message})` : ''}`;
-          emit({ status: 'error', stream: 'stderr', content: `${output}\n` });
-          emitStatus('error');
-        });
-      return;
-    }
-
     const prompt = buildRoleTaskPrompt(roleId, taskMarkdown, inputCards);
     const command = buildRoleTaskCommand(options.provider, prompt, options.cwd, runId);
     if (!command) {

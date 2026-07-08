@@ -56,6 +56,8 @@
   --education-card-check: #d7e1ef;
   --education-card-summary: #95a4ff;
   --education-card-question: #f6c1ff;
+  --education-card-news: #67e8a5;
+  --education-card-copywork: #fbbf24;
   --education-card-label-stroke: rgba(10, 10, 20, 0.85);
 }
 
@@ -137,6 +139,18 @@
   .education-connection-sheen {
     stroke-dasharray: 18 26;
     animation: education-connection-sheen 2.4s linear infinite;
+  }
+
+  .role-dock-shell {
+    width: min(478px, calc(100vw - min(360px, 42vw) - 24px));
+  }
+
+  @media (max-width: 767px) {
+    .role-dock-shell {
+      bottom: calc(42vh + 12px);
+      width: calc(100vw - 16px);
+      max-width: calc(100vw - 16px);
+    }
   }
 }
 

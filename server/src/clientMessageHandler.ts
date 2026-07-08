@@ -131,6 +131,23 @@ export function handleClientMessage(
       break;
     }
 
+    case 'consoleUserInput': {
+      const content = typeof msg.content === 'string' ? msg.content.trim() : '';
+      const roleId =
+        typeof msg.roleId === 'string' && msg.roleId.trim() ? msg.roleId.trim() : 'assistant';
+      if (!content) break;
+      const runId = `console-${Date.now().toString(36)}`;
+      send({
+        type: 'roleTaskConsole',
+        runId,
+        roleId,
+        status: 'done',
+        stream: 'system',
+        content: `用户输入：${content}\n${buildConsoleReply(content)}\n`,
+      });
+      break;
+    }
+
     case 'addExternalAssetDirectory': {
       const newPath = msg.path as string | undefined;
       if (!newPath) break;
@@ -157,6 +174,48 @@ export function handleClientMessage(
       // focusAgent, exportLayout, importLayout
       // require IDE-specific handling (not yet implemented for standalone)
       break;
+  }
+}
+
+function buildConsoleReply(content: string): string {
+  const classification = classifyConsoleInput(content);
+  const nextStep = suggestConsoleNextStep(content, classification.kind);
+  return [`输入类型：${classification.label}。`, nextStep].join('\n');
+}
+
+function classifyConsoleInput(content: string): { kind: string; label: string } {
+  if (/^(这里|这儿|当前|现在).{0,8}(是|在)/u.test(content) || /我是?在/u.test(content)) {
+    return { kind: 'environment', label: '环境声明' };
+  }
+  if (/^(确认|可以|好的|是|对|同意|取消|不要|不行|停止|停)$/u.test(content)) {
+    return { kind: 'confirmation', label: '确认回复' };
+  }
+  if (/(todo|待办|任务|作业|完成|做完|打卡|阅读|练字|数学|英语)/iu.test(content)) {
+    return { kind: 'todo', label: '每日 TODO' };
+  }
+  if (/(新闻|摘抄|热点|时事|暑假|手抄)/u.test(content)) {
+    return { kind: 'news', label: '新闻摘抄' };
+  }
+  return { kind: 'intent', label: '用户意图' };
+}
+
+function suggestConsoleNextStep(content: string, kind: string): string {
+  switch (kind) {
+    case 'environment':
+      return '我先记下这个环境信息。下一步可以告诉我：这个位置常用来做什么，或者有哪些需要提醒的物品。';
+    case 'confirmation':
+      return /取消|不要|不行|停止|停/u.test(content)
+        ? '收到，我会先暂停当前动作。你可以继续说“改成……”来调整任务。'
+        : '收到确认。下一步我会继续执行当前任务，并在需要选择或完成确认时再问你。';
+    case 'todo':
+      if (/(完成|做完|打卡)/u.test(content)) {
+        return '我把它当作完成反馈。下一步会更新今日进度，并给你一句个性化鼓励。';
+      }
+      return '我把它当作 TODO 输入。你可以继续补充截止时间，例如“晚上 8 点提醒我”，或说“完成阅读”来更新进度。';
+    case 'news':
+      return '我把它当作新闻摘抄任务。下面会在 console 里给出过滤后的候选新闻，你可以勾选要摘抄的新闻，再生成适合手抄长度的总结。';
+    default:
+      return '我会把这句话交给任务入口员拆解。你也可以直接说“新增 TODO：……”或“今天新闻摘抄”。';
   }
 }
 

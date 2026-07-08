@@ -13,7 +13,10 @@ export type RoleId =
   | 'poster'
   | 'checker'
   | 'summarizer'
-  | 'questioner';
+  | 'questioner'
+  | 'newsCollector'
+  | 'newsFilter'
+  | 'copyworkPicker';
 
 export interface WeatherRoleConfig {
   city: string;
@@ -85,8 +88,8 @@ export interface RoleRuntimeConfig {
 }
 
 export const defaultWeatherRoleConfig: WeatherRoleConfig = {
-  city: '上海',
-  date: '明天',
+  city: '主卧、客厅、厨房、充电桩',
+  date: '今天',
   outputs: {
     condition: true,
     temperature: true,
@@ -97,8 +100,8 @@ export const defaultWeatherRoleConfig: WeatherRoleConfig = {
 };
 
 export const defaultDresserRoleConfig: DresserRoleConfig = {
-  activity: '去学校 / 公园',
-  style: '舒服、方便活动',
+  activity: '把桌上的小物品递给用户',
+  style: '低速、避开人手、确认抓取目标',
   outputs: {
     top: true,
     bottom: true,
@@ -108,8 +111,8 @@ export const defaultDresserRoleConfig: DresserRoleConfig = {
 };
 
 export const defaultTravelRoleConfig: TravelRoleConfig = {
-  destination: '学校 / 公园',
-  transport: '步行或短途出行',
+  destination: '主卧',
+  transport: '轮式底盘低速移动',
   outputs: {
     umbrella: true,
     waterBottle: true,
@@ -119,8 +122,8 @@ export const defaultTravelRoleConfig: TravelRoleConfig = {
 };
 
 export const defaultCaptainRoleConfig: CaptainRoleConfig = {
-  audience: '小朋友',
-  tone: '有趣、亲切、像广播一样',
+  audience: '家庭用户',
+  tone: '简短、明确、可确认',
   outputs: {
     weatherSummary: true,
     clothingSummary: true,
@@ -141,76 +144,100 @@ const GENERIC_ROLE_PROFILES: Record<
   }
 > = {
   navigator: {
-    heading: '地图导航员任务',
-    persona: '你是地图导航员，负责把目的地、路线和路上提醒整理成小朋友能执行的路线卡。',
+    heading: '领航员任务',
+    persona: '你是桌面机器人的领航员，负责读取地图记忆、POI 和视觉事实，规划底盘路线。',
     cardName: '路线卡',
-    defaultTopic: '明天去学校 / 公园的路线安排',
-    defaultStyle: '清楚、简短、注意安全',
-    defaultInclude: '路线步骤、预计时间、路上提醒',
+    defaultTopic: '从当前位置移动到主卧',
+    defaultStyle: '低速、安全、可执行',
+    defaultInclude: '目标 POI、关键路标、禁行区、到达判定',
   },
   encyclopedia: {
-    heading: '百科老师任务',
-    persona: '你是百科老师，负责把陌生知识讲成小朋友容易听懂的小知识卡。',
-    cardName: '知识卡',
-    defaultTopic: '解释一个和天气、出行或学习有关的小知识',
-    defaultStyle: '像老师一样清楚，但不要太长',
-    defaultInclude: '一句话答案、简单解释、生活例子',
+    heading: '视觉观察员任务',
+    persona: '你是桌面机器人的视觉观察员，负责把摄像头画面整理成可给规划和安全角色使用的事实。',
+    cardName: '视觉事实卡',
+    defaultTopic: '观察桌面、通道、人物和目标物',
+    defaultStyle: '客观、结构化、只描述可见事实',
+    defaultInclude: '物体、方位、距离估计、通道、风险',
   },
   calculator: {
-    heading: '计算小能手任务',
-    persona: '你是计算小能手，负责帮小队数数量、算时间、算花费，并写清楚怎么算。',
-    cardName: '计算卡',
-    defaultTopic: '计算出行准备需要的数量或时间',
-    defaultStyle: '一步一步、数字清楚',
-    defaultInclude: '已知条件、计算过程、最终答案',
+    heading: '状态诊断员任务',
+    persona: '你是桌面机器人的状态诊断员，负责汇总硬件与软件运行状态。',
+    cardName: '诊断卡',
+    defaultTopic: '检查移动、机械臂、视觉、麦克风、扬声器和电量状态',
+    defaultStyle: '简短、分级、可排障',
+    defaultInclude: '可用能力、异常状态、是否允许继续执行',
   },
   translator: {
-    heading: '翻译员任务',
-    persona: '你是翻译员，负责把小队需要的话翻译成目标语言，并保留友好的语气。',
-    cardName: '翻译卡',
-    defaultTopic: '把准备清单或提醒翻译成英文',
-    defaultStyle: '自然、礼貌、适合小朋友朗读',
-    defaultInclude: '原句、译文、一个发音或使用提醒',
+    heading: '听觉监听员任务',
+    persona: '你是桌面机器人的听觉监听员，负责把麦克风输入整理成事实。',
+    cardName: '听觉事实卡',
+    defaultTopic: '识别用户说话、确认回复和环境声音',
+    defaultStyle: '准确、保留不确定性',
+    defaultInclude: '原话摘要、说话人、置信度、是否为打断或确认',
   },
   storyteller: {
-    heading: '故事作家任务',
-    persona: '你是故事作家，负责把主题和素材变成有开头、经过、结尾的小故事。',
-    cardName: '故事卡',
-    defaultTopic: '写一个关于明天出门准备的小故事',
-    defaultStyle: '有画面感、温暖、有一点趣味',
-    defaultInclude: '标题、故事正文、结尾小提醒',
+    heading: '任务规划员任务',
+    persona: '你是桌面机器人的任务规划员，负责把用户意图拆成可协调的角色步骤。',
+    cardName: '任务计划卡',
+    defaultTopic: '用户要求机器人去主卧并递一个物品',
+    defaultStyle: '可执行、可中断、先安全后动作',
+    defaultInclude: '目标、前置确认、观察、导航、移动、操作、反馈',
   },
   poster: {
-    heading: '海报设计师任务',
-    persona: '你是海报设计师，负责把主题整理成标题、画面元素、颜色和文字排版建议。',
-    cardName: '海报卡',
-    defaultTopic: '设计一张明天出门准备提醒海报',
-    defaultStyle: '醒目、整洁、适合小朋友看',
-    defaultInclude: '标题、主画面、颜色、三条短文字',
+    heading: 'LED 表情员任务',
+    persona: '你是桌面机器人的 LED 表情员，负责把机器人状态转换成灯效。',
+    cardName: 'LED 状态卡',
+    defaultTopic: '为等待确认、执行中、成功、错误和安全停止设计灯效',
+    defaultStyle: '清晰、克制、不打扰',
+    defaultInclude: '颜色、闪烁节奏、触发状态、结束条件',
   },
   checker: {
-    heading: '检查员任务',
-    persona: '你是检查员，负责检查其他角色的卡片有没有遗漏、矛盾或不容易执行的地方。',
-    cardName: '检查卡',
-    defaultTopic: '检查小队的准备建议是否完整',
-    defaultStyle: '认真、友好、只指出真正需要改的地方',
-    defaultInclude: '做得好的地方、需要补充的地方、修正建议',
+    heading: '安全监督员任务',
+    persona: '你是桌面机器人的安全监督员，负责审查移动和机械臂动作。',
+    cardName: '安全许可卡',
+    defaultTopic: '检查去主卧和递物动作是否安全',
+    defaultStyle: '保守、明确、必要时要求确认',
+    defaultInclude: '允许/禁止、风险点、需要用户确认的问题、停止条件',
   },
   summarizer: {
-    heading: '总结员任务',
-    persona: '你是总结员，负责把多张卡片压缩成清楚、短小、好记的重点。',
-    cardName: '总结卡',
-    defaultTopic: '总结明天去学校 / 公园的准备重点',
-    defaultStyle: '短小、好记、适合贴在任务卡上',
-    defaultInclude: '三条重点、一个最重要提醒',
+    heading: '交互入口员任务',
+    persona: '你是桌面机器人的交互入口员，负责接收用户输入并判断输入类型。',
+    cardName: '用户意图卡',
+    defaultTopic: '用户说：这里是主卧，之后把眼镜递给我',
+    defaultStyle: '短句、结构化、可路由',
+    defaultInclude: '输入类型、用户意图、环境声明、需要确认的字段',
   },
   questioner: {
-    heading: '提问员任务',
-    persona: '你是提问员，负责发现任务里还没说清楚的地方，提出帮助小队继续思考的问题。',
-    cardName: '问题卡',
-    defaultTopic: '为明天去学校 / 公园的准备任务提出追问',
-    defaultStyle: '好奇、友好、问题具体',
-    defaultInclude: '三个关键问题、为什么要问',
+    heading: '确认追问员任务',
+    persona: '你是桌面机器人的确认追问员，负责在信息不足或动作有风险时向用户发起确认。',
+    cardName: '确认请求卡',
+    defaultTopic: '确认目标房间、目标物和是否允许机械臂靠近用户',
+    defaultStyle: '一次只问关键问题',
+    defaultInclude: '问题、默认安全动作、可接受回答',
+  },
+  newsCollector: {
+    heading: '新闻收集员任务',
+    persona: '你是新闻收集员，负责为小学生新闻摘抄收集近期热点候选。',
+    cardName: '热点新闻卡',
+    defaultTopic: '暑假每日新闻摘抄',
+    defaultStyle: '客观、简短、适合继续筛选',
+    defaultInclude: '5条候选新闻、每条一句摘要、来源或时间线索',
+  },
+  newsFilter: {
+    heading: '新闻过滤员任务',
+    persona: '你是新闻过滤员，负责过滤不适合小学生摘抄的新闻。',
+    cardName: '适合摘抄卡',
+    defaultTopic: '筛选小学生可摘抄新闻',
+    defaultStyle: '谨慎、清楚、保护儿童阅读体验',
+    defaultInclude: '保留新闻、过滤新闻、过滤原因',
+  },
+  copyworkPicker: {
+    heading: '摘抄推荐员任务',
+    persona: '你是摘抄推荐员，负责把适合摘抄的新闻整理成学生可以选择的少量选项。',
+    cardName: '候选新闻卡',
+    defaultTopic: '给学生推荐今天可摘抄的新闻',
+    defaultStyle: '选择简单、表达积极、便于手抄',
+    defaultInclude: 'A/B/C三个选项、推荐理由、摘抄句',
   },
 };
 
@@ -231,110 +258,108 @@ export function buildRoleTaskMarkdown(config: RoleRuntimeConfig): string {
 
 export function buildWeatherTaskMarkdown(config: WeatherRoleConfig): string {
   const outputItems = [
-    config.outputs.condition ? '天气情况' : null,
-    config.outputs.temperature ? '温度' : null,
-    config.outputs.rain ? '是否下雨' : null,
-    config.outputs.wind ? '风力' : null,
-    config.outputs.airQuality ? '空气质量' : null,
+    config.outputs.condition ? '房间或 POI 名称' : null,
+    config.outputs.temperature ? '当前位置声明' : null,
+    config.outputs.rain ? '物品位置' : null,
+    config.outputs.wind ? '禁行区或通道提示' : null,
+    config.outputs.airQuality ? '置信度或来源' : null,
   ].filter(Boolean);
 
   return [
-    '# 气象学家任务',
+    '# 家庭记忆员任务',
     '',
-    '你是气象学家，负责把天气线索整理成小队能看懂的天气卡。',
+    '你是桌面机器人的家庭记忆员，负责维护家庭 POI、房间别名、禁行区和用户环境声明。',
     '',
     '任务：',
     '',
-    `- 查询${config.city}${config.date}的天气。`,
-    '- 输出一张简短的天气卡。',
-    `- 天气卡必须包含：${outputItems.join('、') || '天气情况'}。`,
-    '- 如果无法联网查询，请明确说明查询失败，并给出需要重新查询的提示。',
+    `- 已知家庭线索：${config.city}。`,
+    `- 记录时间范围：${config.date}。`,
+    `- 地图记忆卡必须包含：${outputItems.join('、') || 'POI 和环境声明'}。`,
+    '- 如果用户声明“这里是主卧”之类信息，请整理成可持久化 POI 记录。',
     '',
     '输出格式：',
     '',
-    '天气卡：<天气摘要>',
+    '地图记忆卡：<POI、房间别名、物品位置或待确认字段>',
   ].join('\n');
 }
 
 export function buildDresserTaskMarkdown(config: DresserRoleConfig): string {
   const outputItems = [
-    config.outputs.top ? '上衣' : null,
-    config.outputs.bottom ? '下装' : null,
-    config.outputs.shoes ? '鞋子' : null,
-    config.outputs.accessories ? '可选配件' : null,
+    config.outputs.top ? '目标物' : null,
+    config.outputs.bottom ? '动作序列' : null,
+    config.outputs.shoes ? '速度/力度约束' : null,
+    config.outputs.accessories ? '停止条件' : null,
   ].filter(Boolean);
 
   return [
-    '# 穿衣管家任务',
+    '# 机械臂操作员任务',
     '',
-    '你是穿衣管家，负责把天气卡变成小朋友容易照做的穿衣建议。',
+    '你是桌面机器人的机械臂操作员，负责把取、放、推、递等动作拆成机械臂可执行步骤。',
     '',
     '任务：',
     '',
-    `- 根据收到的天气卡，为“${config.activity}”给出穿衣建议。`,
-    `- 穿衣风格要偏向：${config.style}。`,
-    `- 穿衣卡必须包含：${outputItems.join('、') || '穿衣建议'}。`,
-    '- 如果天气卡信息不够，请说明还需要气象学家补充什么。',
+    `- 操作目标：${config.activity}。`,
+    `- 操作约束：${config.style}。`,
+    `- 操作结果卡必须包含：${outputItems.join('、') || '动作、约束、停止条件'}。`,
+    '- 如果缺少视觉事实或安全许可，请要求先确认，不要输出执行动作。',
     '',
     '输出格式：',
     '',
-    '穿衣卡：<穿衣建议>',
+    '操作结果卡：<机械臂动作、约束、停止条件或需要确认的问题>',
   ].join('\n');
 }
 
 export function buildTravelTaskMarkdown(config: TravelRoleConfig): string {
   const outputItems = [
-    config.outputs.umbrella ? '是否带伞' : null,
-    config.outputs.waterBottle ? '水杯' : null,
-    config.outputs.sunProtection ? '防晒或防风' : null,
-    config.outputs.safety ? '安全提醒' : null,
+    config.outputs.umbrella ? '路线段' : null,
+    config.outputs.waterBottle ? '速度限制' : null,
+    config.outputs.sunProtection ? '避障策略' : null,
+    config.outputs.safety ? '停止条件' : null,
   ].filter(Boolean);
 
   return [
-    '# 出行管家任务',
+    '# 底盘驾驶员任务',
     '',
-    '你是出行管家，负责把天气卡和目的地变成路上要注意的提醒。',
+    '你是桌面机器人的底盘驾驶员，负责执行轮式底盘移动。',
     '',
     '任务：',
     '',
-    `- 根据收到的天气卡，为去“${config.destination}”给出出行提醒。`,
-    `- 默认出行方式：${config.transport}。`,
-    `- 出行卡必须包含：${outputItems.join('、') || '出行提醒'}。`,
-    '- 如果天气卡信息不够，请说明还需要气象学家补充什么。',
+    `- 目标地点：${config.destination}。`,
+    `- 移动方式：${config.transport}。`,
+    `- 移动结果卡必须包含：${outputItems.join('、') || '动作序列、进度、停止条件'}。`,
+    '- 如果缺少路线卡或安全许可，请停止并说明缺口。',
     '',
     '输出格式：',
     '',
-    '出行卡：<出行提醒>',
+    '移动结果卡：<底盘动作序列、进度、失败原因或停止条件>',
   ].join('\n');
 }
 
 export function buildCaptainTaskMarkdown(config: CaptainRoleConfig): string {
   const outputItems = [
-    config.outputs.weatherSummary ? '天气摘要' : null,
-    config.outputs.clothingSummary ? '穿衣摘要' : null,
-    config.outputs.travelSummary ? '出行摘要' : null,
-    config.outputs.checklist ? '最终准备清单' : null,
+    config.outputs.weatherSummary ? '确认问题' : null,
+    config.outputs.clothingSummary ? '执行提醒' : null,
+    config.outputs.travelSummary ? '结果反馈' : null,
+    config.outputs.checklist ? '错误说明' : null,
   ].filter(Boolean);
 
   return [
-    '# 广播员任务',
+    '# 语音播报员任务',
     '',
-    '你是广播员，负责为穿衣管家和出行管家的输出注入趣味性元素，并播报给大家。',
+    '你是桌面机器人的语音播报员，负责把确认、提醒、错误和结果转成适合扬声器播放的短句。',
     '',
     '任务：',
     '',
-    '- 重点读取穿衣卡和出行卡，并可参考天气卡补充背景。',
-    '- 把穿衣管家和出行管家的建议改写得更有画面感、更有趣，但不要改变原意。',
-    `- 面向${config.audience}进行广播。`,
+    '- 重点读取确认请求卡、任务计划卡、移动结果卡、操作结果卡或诊断卡。',
+    '- 输出一句到三句可直接朗读的话。',
+    `- 面向${config.audience}播报。`,
     `- 语气要求：${config.tone}。`,
-    `- 广播必须包含：${outputItems.join('、') || '最终准备清单'}。`,
-    '- 如果缺少关键卡片，请说明还需要哪个角色先补充。',
+    `- 语音输出卡必须包含：${outputItems.join('、') || '确认、提醒、结果'}。`,
+    '- 对确认问题保持简短，一次只问关键问题。',
     '',
     '输出格式：',
     '',
-    '趣味广播：',
-    '',
-    '- <物品或行动>',
+    '语音输出卡：<可朗读文本>',
   ].join('\n');
 }
 
@@ -380,6 +405,9 @@ export function createDefaultRoleConfig(roleId: RoleId | string): RoleRuntimeCon
     case 'checker':
     case 'summarizer':
     case 'questioner':
+    case 'newsCollector':
+    case 'newsFilter':
+    case 'copyworkPicker':
       return createRoleConfig(roleId, {
         roleId,
         generic: createDefaultGenericRoleConfig(roleId),

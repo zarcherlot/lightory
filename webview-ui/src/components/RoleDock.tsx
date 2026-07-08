@@ -6,10 +6,7 @@ interface RoleDockProps {
 
 export function RoleDock({ activeRoleIds }: RoleDockProps) {
   return (
-    <div
-      className="absolute left-1/2 bottom-210 -translate-x-1/2 z-20 px-8 py-6 bg-bg border-2 border-border shadow-pixel flex gap-8 overflow-x-auto overscroll-x-contain"
-      style={{ width: 'min(478px, calc(100vw - min(360px, 42vw) - 24px))' }}
-    >
+    <div className="role-dock-shell absolute left-1/2 bottom-210 -translate-x-1/2 z-20 px-8 py-6 bg-bg border-2 border-border shadow-pixel flex gap-8 overflow-x-auto overscroll-x-contain">
       {roleDefinitions.map((role) => {
         const active = activeRoleIds.has(role.id);
         return (

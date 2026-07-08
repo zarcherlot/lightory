@@ -39,6 +39,7 @@ export type ServerMessage =
 export type ClientMessage =
   | WebviewReady
   | StartRoleTask
+  | ConsoleUserInput
   | FocusAgent
   | CloseAgent
   | SaveAgentSeats
@@ -310,6 +311,12 @@ export interface RoleTaskInputCard {
 
 export interface RoleTaskOverride {
   markdown: string;
+}
+
+export interface ConsoleUserInput {
+  type: 'consoleUserInput';
+  content: string;
+  roleId?: string;
 }
 
 export interface FocusAgent {
