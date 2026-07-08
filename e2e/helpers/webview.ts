@@ -27,7 +27,7 @@ async function setCheckbox(modal: Locator, label: string, checked: boolean): Pro
 }
 
 async function openSettingsModal(frame: WebviewSurface): Promise<Locator> {
-  const settingsButton = frame.locator('button', { hasText: 'Settings' });
+  const settingsButton = frame.getByRole('button', { name: 'Settings' });
   await expect(settingsButton).toBeVisible({ timeout: WEBVIEW_TIMEOUT_MS });
   await settingsButton.click();
 

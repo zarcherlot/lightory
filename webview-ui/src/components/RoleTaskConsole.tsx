@@ -48,7 +48,7 @@ export function RoleTaskConsole({
             title="Settings"
             aria-label="Settings"
           >
-            ⚙
+            ⚙<span className="sr-only">Settings</span>
           </button>
         </div>
       </div>
