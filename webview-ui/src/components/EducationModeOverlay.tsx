@@ -9,9 +9,30 @@ import { Button } from './ui/Button.js';
 
 const CARD_COLORS: Record<string, string> = {
   天气卡: 'var(--education-card-weather)',
+  天气结果卡: 'var(--education-card-weather)',
   穿衣卡: 'var(--education-card-dresser)',
+  穿衣建议卡: 'var(--education-card-dresser)',
   出行卡: 'var(--education-card-travel)',
+  出行提醒卡: 'var(--education-card-travel)',
   计划卡: 'var(--education-card-plan)',
+  趣味广播: 'var(--education-card-plan)',
+  路线卡: 'var(--education-card-route)',
+  路线提醒卡: 'var(--education-card-route)',
+  知识卡: 'var(--education-card-knowledge)',
+  知识讲解卡: 'var(--education-card-knowledge)',
+  计算卡: 'var(--education-card-math)',
+  计算结果卡: 'var(--education-card-math)',
+  翻译卡: 'var(--education-card-translate)',
+  翻译结果卡: 'var(--education-card-translate)',
+  故事卡: 'var(--education-card-story)',
+  故事草稿卡: 'var(--education-card-story)',
+  海报卡: 'var(--education-card-poster)',
+  海报方案卡: 'var(--education-card-poster)',
+  检查卡: 'var(--education-card-check)',
+  检查结果卡: 'var(--education-card-check)',
+  总结卡: 'var(--education-card-summary)',
+  问题卡: 'var(--education-card-question)',
+  追问卡: 'var(--education-card-question)',
 };
 
 const ACCEPTS_CARD: Record<string, string[]> = {
@@ -19,6 +40,54 @@ const ACCEPTS_CARD: Record<string, string[]> = {
   dresser: ['天气卡'],
   travel: ['天气卡'],
   captain: ['穿衣卡', '出行卡'],
+  navigator: ['天气卡', '出行卡'],
+  encyclopedia: ['问题卡'],
+  calculator: ['天气卡', '路线卡', '计划卡'],
+  translator: ['计划卡', '总结卡', '知识卡'],
+  storyteller: ['天气卡', '知识卡', '计划卡', '总结卡'],
+  poster: ['计划卡', '总结卡', '故事卡'],
+  checker: [
+    '天气卡',
+    '穿衣卡',
+    '出行卡',
+    '路线卡',
+    '知识卡',
+    '计算卡',
+    '翻译卡',
+    '故事卡',
+    '海报卡',
+    '计划卡',
+    '总结卡',
+    '问题卡',
+  ],
+  summarizer: [
+    '天气卡',
+    '穿衣卡',
+    '出行卡',
+    '路线卡',
+    '知识卡',
+    '计算卡',
+    '翻译卡',
+    '故事卡',
+    '海报卡',
+    '检查卡',
+    '计划卡',
+    '问题卡',
+  ],
+  questioner: [
+    '天气卡',
+    '穿衣卡',
+    '出行卡',
+    '路线卡',
+    '知识卡',
+    '计算卡',
+    '翻译卡',
+    '故事卡',
+    '海报卡',
+    '检查卡',
+    '计划卡',
+    '总结卡',
+  ],
 };
 
 interface DraggedCard {
@@ -66,6 +135,7 @@ interface EducationModeOverlayProps {
   panRef: React.RefObject<{ x: number; y: number }>;
   activeFlowConnections: EducationConnectionPulse[];
   roleConfigs: Record<string, RoleRuntimeConfig>;
+  roleResultCards: Record<string, string>;
   onConfigureRole: (roleId: string) => void;
   onRunTeam: (connections: EducationConnection[]) => void;
   onPauseRun: () => void;
@@ -84,6 +154,7 @@ export function EducationModeOverlay({
   panRef,
   activeFlowConnections,
   roleConfigs,
+  roleResultCards,
   onConfigureRole,
   onRunTeam,
   onPauseRun,
@@ -261,7 +332,7 @@ export function EducationModeOverlay({
   };
 
   const statusText = (() => {
-    if (isEditMode) return '搭建小队';
+    if (isEditMode) return null;
     if (runStatus === 'running') return '运行中';
     if (runStatus === 'pausing') return '准备暂停';
     if (runStatus === 'paused') return '已暂停';
@@ -275,83 +346,126 @@ export function EducationModeOverlay({
       <div className="absolute top-10 left-10 z-30 pixel-panel px-10 py-8 max-w-360">
         <div className="flex items-center justify-between gap-8 mb-4">
           <div className="text-sm leading-tight text-text-muted">任务卡</div>
-          <div className="text-xs leading-none text-text-muted">{statusText}</div>
+          {statusText ? (
+            <div className="text-xs leading-none text-text-muted">{statusText}</div>
+          ) : null}
         </div>
         <div className="text-base leading-tight mb-8">明天去学校 / 公园，需要准备什么？</div>
         {isEditMode ? (
           <Button
             variant={canRun ? 'accent' : 'disabled'}
-            size="md"
+            size="icon_lg"
             disabled={!canRun}
             onClick={() => onRunTeam(connections)}
             title={canRun ? '运行小队' : '先把角色拖进房间'}
+            aria-label="运行小队"
           >
-            运行小队
+            <IconGlyph label="运行">▶</IconGlyph>
           </Button>
         ) : runStatus === 'running' || runStatus === 'pausing' ? (
           <div className="flex flex-wrap gap-6">
             <Button
               variant={runStatus === 'pausing' ? 'disabled' : 'default'}
-              size="md"
+              size="icon_lg"
               disabled={runStatus === 'pausing'}
               onClick={onPauseRun}
               title="当前这批角色完成后暂停"
+              aria-label="暂停"
             >
-              暂停
+              <IconGlyph label="暂停">Ⅱ</IconGlyph>
             </Button>
-            <Button variant="default" size="md" onClick={onStopRun} title="停止后续角色运行">
-              停止
+            <Button
+              variant="default"
+              size="icon_lg"
+              onClick={onStopRun}
+              title="停止后续角色运行"
+              aria-label="停止"
+            >
+              <IconGlyph label="停止">■</IconGlyph>
             </Button>
           </div>
         ) : runStatus === 'paused' ? (
           <div className="flex flex-wrap gap-6">
-            <Button variant="accent" size="md" onClick={onResumeRun} title="继续运行下一批角色">
-              继续
+            <Button
+              variant="accent"
+              size="icon_lg"
+              onClick={onResumeRun}
+              title="继续运行下一批角色"
+              aria-label="继续运行"
+            >
+              <IconGlyph label="继续">▶</IconGlyph>
             </Button>
-            <Button variant="default" size="md" onClick={onStopRun} title="停止后续角色运行">
-              停止
+            <Button
+              variant="default"
+              size="icon_lg"
+              onClick={onStopRun}
+              title="停止后续角色运行"
+              aria-label="停止"
+            >
+              <IconGlyph label="停止">■</IconGlyph>
             </Button>
           </div>
         ) : runStatus === 'completed' ? (
           <div className="flex flex-wrap gap-6">
             <Button
               variant="accent"
-              size="md"
+              size="icon_lg"
               onClick={() => onRunTeam(connections)}
               title="按当前连接再运行一次"
+              aria-label="再跑一次"
             >
-              再跑一次
+              <IconGlyph label="再跑一次">↻</IconGlyph>
             </Button>
-            <Button variant="default" size="md" onClick={onBackToEdit} title="回到编辑模式调整小队">
-              回到编辑
+            <Button
+              variant="default"
+              size="icon_lg"
+              onClick={onBackToEdit}
+              title="回到编辑模式调整小队"
+              aria-label="回到编辑"
+            >
+              <IconGlyph label="回到编辑">✎</IconGlyph>
             </Button>
           </div>
         ) : runStatus === 'error' ? (
           <div className="flex flex-wrap gap-6">
             <Button
               variant="accent"
-              size="md"
+              size="icon_lg"
               onClick={() => onRunTeam(connections)}
               title="重新运行当前小队"
+              aria-label="再试一次"
             >
-              再试一次
+              <IconGlyph label="再试一次">↻</IconGlyph>
             </Button>
-            <Button variant="default" size="md" onClick={onBackToEdit} title="回到编辑模式修正连接">
-              修一修
+            <Button
+              variant="default"
+              size="icon_lg"
+              onClick={onBackToEdit}
+              title="回到编辑模式修正连接"
+              aria-label="回到编辑"
+            >
+              <IconGlyph label="回到编辑">✎</IconGlyph>
             </Button>
           </div>
         ) : (
           <div className="flex flex-wrap gap-6">
             <Button
               variant="accent"
-              size="md"
+              size="icon_lg"
               onClick={() => onRunTeam(connections)}
               title="按当前连接重新运行"
+              aria-label="再跑一次"
             >
-              再跑一次
+              <IconGlyph label="再跑一次">↻</IconGlyph>
             </Button>
-            <Button variant="default" size="md" onClick={onBackToEdit} title="回到编辑模式">
-              回到编辑
+            <Button
+              variant="default"
+              size="icon_lg"
+              onClick={onBackToEdit}
+              title="回到编辑模式"
+              aria-label="回到编辑"
+            >
+              <IconGlyph label="回到编辑">✎</IconGlyph>
             </Button>
           </div>
         )}
@@ -501,15 +615,27 @@ export function EducationModeOverlay({
           (deviceOffsetY + (ch.y + sittingOffset - TOOL_OVERLAY_VERTICAL_OFFSET) * zoom) / dpr;
 
         if (!isEditMode) {
-          if (ch.roleTaskState !== 'weather') return null;
+          const resultContent = roleResultCards[role.id];
+          if (ch.roleTaskState !== 'weather' && !resultContent) return null;
           return (
             <div
               key={role.id}
-              className="absolute z-31 -translate-x-1/2 pixel-panel px-8 py-5 max-w-180 text-center pointer-events-none"
+              className="absolute z-31 -translate-x-1/2 pixel-panel px-8 py-6 w-220 text-center pointer-events-none"
               style={{ left: screenX, top: screenY - 88 }}
             >
-              <div className="text-xs leading-tight text-text-muted">{role.resultCard}</div>
-              <div className="text-sm leading-tight mt-2">{role.title}完成</div>
+              <div
+                className="inline-block border-2 bg-bg-dark px-7 py-3 text-xs leading-none"
+                style={{ borderColor: CARD_COLORS[role.resultCard] ?? undefined }}
+              >
+                {role.resultCard}
+              </div>
+              {resultContent ? (
+                <div className="mt-5 max-h-76 overflow-hidden text-xs leading-tight text-left text-text break-words">
+                  {formatResultCardPreview(resultContent)}
+                </div>
+              ) : (
+                <div className="text-xs leading-tight mt-4">{role.name}完成</div>
+              )}
             </div>
           );
         }
@@ -559,6 +685,25 @@ export function EducationModeOverlay({
           </div>
         );
       })}
+    </>
+  );
+}
+
+function formatResultCardPreview(content: string): string {
+  return content
+    .replace(/^\s*([^：:\n]{1,16}卡|趣味广播)[：:]\s*/u, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 96);
+}
+
+function IconGlyph({ children, label }: { children: string; label: string }) {
+  return (
+    <>
+      <span aria-hidden="true" className="text-lg leading-none">
+        {children}
+      </span>
+      <span className="sr-only">{label}</span>
     </>
   );
 }

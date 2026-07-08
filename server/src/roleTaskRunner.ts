@@ -13,6 +13,15 @@ const ROLE_TASK_FILES: Record<string, string> = {
   dresser: 'dresser.md',
   travel: 'travel.md',
   captain: 'captain.md',
+  navigator: 'navigator.md',
+  encyclopedia: 'encyclopedia.md',
+  calculator: 'calculator.md',
+  translator: 'translator.md',
+  storyteller: 'storyteller.md',
+  poster: 'poster.md',
+  checker: 'checker.md',
+  summarizer: 'summarizer.md',
+  questioner: 'questioner.md',
 };
 const ROLE_TASK_TIMEOUT_MS = 120_000;
 const WEATHER_LOOKUP_TIMEOUT_MS = 6_000;

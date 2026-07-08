@@ -3,12 +3,16 @@ import { useEffect, useState } from 'react';
 import {
   buildCaptainTaskMarkdown,
   buildDresserTaskMarkdown,
+  buildGenericTaskMarkdown,
   buildTravelTaskMarkdown,
   buildWeatherTaskMarkdown,
   type CaptainRoleConfig,
   createDefaultRoleConfig,
   type DresserRoleConfig,
+  type GenericRoleConfig,
+  type RoleId,
   type RoleRuntimeConfig,
+  syncMarkdownToSimple,
   syncSimpleToMarkdown,
   type TravelRoleConfig,
   type WeatherRoleConfig,
@@ -45,8 +49,11 @@ export function RoleConfigModal({
 
   if (!roleId || !role) return null;
 
+  const prepareConfig = (config: RoleRuntimeConfig) =>
+    config.mode === 'markdown' ? syncMarkdownToSimple(config) : syncSimpleToMarkdown(config);
+
   const save = () => {
-    onSave(syncSimpleToMarkdown(draft));
+    onSave(prepareConfig(draft));
     onClose();
   };
 
@@ -67,7 +74,9 @@ export function RoleConfigModal({
           <Button
             variant={draft.mode === 'simple' ? 'active' : 'default'}
             size="sm"
-            onClick={() => setDraft((current) => ({ ...current, mode: 'simple' }))}
+            onClick={() =>
+              setDraft((current) => ({ ...syncMarkdownToSimple(current), mode: 'simple' }))
+            }
           >
             简单模式
           </Button>
@@ -98,11 +107,7 @@ export function RoleConfigModal({
           <Button variant="default" size="md" onClick={onClose}>
             取消
           </Button>
-          <Button
-            variant="default"
-            size="md"
-            onClick={() => onRunRole(syncSimpleToMarkdown(draft))}
-          >
+          <Button variant="default" size="md" onClick={() => onRunRole(prepareConfig(draft))}>
             运行这个角色
           </Button>
           <Button variant="accent" size="md" onClick={save}>
@@ -173,6 +178,22 @@ function RoleSimpleEditor({ draft, onChange }: RoleSimpleEditorProps) {
           }
         />
       );
+    default: {
+      const roleId = draft.simple.roleId;
+      return (
+        <GenericSimpleEditor
+          roleId={roleId}
+          config={draft.simple.generic}
+          onChange={(generic) =>
+            onChange({
+              ...draft,
+              simple: { roleId, generic },
+              markdown: buildGenericTaskMarkdown(roleId, generic),
+            })
+          }
+        />
+      );
+    }
   }
 }
 
@@ -377,6 +398,33 @@ function CaptainSimpleEditor({ config, onChange }: CaptainSimpleEditorProps) {
           label="最终准备清单"
         />
       </OptionPanel>
+    </SimpleGrid>
+  );
+}
+
+interface GenericSimpleEditorProps {
+  roleId: Exclude<RoleId, 'weather' | 'dresser' | 'travel' | 'captain'>;
+  config: GenericRoleConfig;
+  onChange: (config: GenericRoleConfig) => void;
+}
+
+function GenericSimpleEditor({ config, onChange }: GenericSimpleEditorProps) {
+  const update = (patch: Partial<GenericRoleConfig>) => onChange({ ...config, ...patch });
+
+  return (
+    <SimpleGrid>
+      <TextField label="主题" value={config.topic} onChange={(topic) => update({ topic })} />
+      <TextField
+        label="面向谁"
+        value={config.audience}
+        onChange={(audience) => update({ audience })}
+      />
+      <TextField label="风格" value={config.style} onChange={(style) => update({ style })} />
+      <TextField
+        label="包含内容"
+        value={config.include}
+        onChange={(include) => update({ include })}
+      />
     </SimpleGrid>
   );
 }

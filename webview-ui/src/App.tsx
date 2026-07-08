@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { toMajorMinor } from './changelogData.js';
-import { BottomToolbar } from './components/BottomToolbar.js';
 import { ChangelogModal } from './components/ChangelogModal.js';
 import { DebugView } from './components/DebugView.js';
 import { EditActionBar } from './components/EditActionBar.js';
@@ -41,6 +40,9 @@ import { transport } from './transport/index.js';
 const officeStateRef = { current: null as OfficeState | null };
 const editorState = new EditorState();
 const MAX_ROLE_TASK_ATTEMPTS = 3;
+
+const createInitialRoleConfigs = (): Record<string, RoleRuntimeConfig> =>
+  Object.fromEntries(roleDefinitions.map((role) => [role.id, createDefaultRoleConfig(role.id)]));
 
 interface RoleTaskInputCard {
   sourceRoleId: string;
@@ -166,22 +168,14 @@ function App() {
   const [isDebugMode, setIsDebugMode] = useState(false);
   const [alwaysShowOverlay, setAlwaysShowOverlay] = useState(false);
   const [activeRoleIds, setActiveRoleIds] = useState<Set<string>>(() => new Set());
-  const [roleConfigs, setRoleConfigs] = useState<Record<string, RoleRuntimeConfig>>(() => ({
-    weather: createDefaultRoleConfig('weather'),
-    dresser: createDefaultRoleConfig('dresser'),
-    travel: createDefaultRoleConfig('travel'),
-    captain: createDefaultRoleConfig('captain'),
-  }));
+  const [roleConfigs, setRoleConfigs] =
+    useState<Record<string, RoleRuntimeConfig>>(createInitialRoleConfigs);
   const [configRoleId, setConfigRoleId] = useState<string | null>(null);
-  const roleConfigsRef = useRef<Record<string, RoleRuntimeConfig>>({
-    weather: createDefaultRoleConfig('weather'),
-    dresser: createDefaultRoleConfig('dresser'),
-    travel: createDefaultRoleConfig('travel'),
-    captain: createDefaultRoleConfig('captain'),
-  });
+  const roleConfigsRef = useRef<Record<string, RoleRuntimeConfig>>(createInitialRoleConfigs());
   const [activeFlowConnections, setActiveFlowConnections] = useState<EducationConnectionPulse[]>(
     [],
   );
+  const [roleResultCards, setRoleResultCards] = useState<Record<string, string>>({});
   const [educationRunStatus, setEducationRunStatus] = useState<EducationRunStatus>('idle');
   const runBatchesRef = useRef<string[][]>([]);
   const runConnectionsRef = useRef<EducationConnection[]>([]);
@@ -271,7 +265,9 @@ function App() {
       if (seenRoleOutputEntryIdsRef.current.has(entry.id)) continue;
       seenRoleOutputEntryIdsRef.current.add(entry.id);
       if (entry.status === 'done' && entry.content.trim()) {
-        roleOutputsRef.current.set(entry.roleId, entry.content.trim());
+        const content = entry.content.trim();
+        roleOutputsRef.current.set(entry.roleId, content);
+        setRoleResultCards((prev) => ({ ...prev, [entry.roleId]: content }));
       }
     }
   }, [roleTaskConsoleEntries]);
@@ -369,6 +365,7 @@ function App() {
       pausedBatchRef.current = null;
       roleAttemptCountsRef.current = new Map();
       roleOutputsRef.current = new Map();
+      setRoleResultCards({});
       seenRoleOutputEntryIdsRef.current = new Set();
       runConnectionsRef.current = connections;
       setActiveFlowConnections([]);
@@ -488,6 +485,7 @@ function App() {
       pausedBatchRef.current = null;
       roleAttemptCountsRef.current = new Map();
       roleOutputsRef.current = new Map();
+      setRoleResultCards({});
       seenRoleOutputEntryIdsRef.current = new Set();
       runConnectionsRef.current = [];
       runBatchesRef.current = [];
@@ -622,6 +620,7 @@ function App() {
             panRef={editor.panRef}
             activeFlowConnections={activeFlowConnections}
             roleConfigs={roleConfigs}
+            roleResultCards={roleResultCards}
             onConfigureRole={handleConfigureRole}
             onRunTeam={handleRunTeam}
             onPauseRun={handlePauseRun}
@@ -710,14 +709,11 @@ function App() {
         </div>
       </Modal>
 
-      <BottomToolbar
-        isEditMode={editor.isEditMode}
-        onToggleEditMode={editor.handleToggleEditMode}
+      <RoleTaskConsole
+        entries={roleTaskConsoleEntries}
         isSettingsOpen={isSettingsOpen}
         onToggleSettings={() => setIsSettingsOpen((v) => !v)}
       />
-
-      <RoleTaskConsole entries={roleTaskConsoleEntries} />
 
       <VersionIndicator
         currentVersion={extensionVersion}
