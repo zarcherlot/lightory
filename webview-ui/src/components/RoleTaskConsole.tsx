@@ -67,7 +67,7 @@ export function RoleTaskConsole({
                     : 'text-text'
               }`}
             >
-              {getRoleSpeakerName(entry.roleId)}：{entry.content}
+              {getRoleSpeakerName(entry.roleId)}：{formatConsoleContent(entry.content)}
             </pre>
           ))
         )}
@@ -78,4 +78,8 @@ export function RoleTaskConsole({
 
 function getRoleSpeakerName(roleId: string): string {
   return getRoleDefinition(roleId)?.name ?? roleId;
+}
+
+function formatConsoleContent(content: string): string {
+  return content.replace(/^\s*(?:[^：:\n]{1,16}卡|趣味广播)[：:]\s*/u, '');
 }

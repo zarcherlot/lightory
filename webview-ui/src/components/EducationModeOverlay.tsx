@@ -114,13 +114,14 @@ export interface EducationConnection {
   card: string;
 }
 
-export interface EducationConnectionPulse extends EducationConnection {
-  pulseId: number;
-}
-
 export type EducationRunStatus = 'idle' | 'running' | 'pausing' | 'paused' | 'completed' | 'error';
 
 interface ErrorFeedback {
+  id: number;
+  text: string;
+}
+
+interface RoleInputHint {
   id: number;
   text: string;
 }
@@ -133,9 +134,7 @@ interface EducationModeOverlayProps {
   containerRef: React.RefObject<HTMLDivElement | null>;
   zoom: number;
   panRef: React.RefObject<{ x: number; y: number }>;
-  activeFlowConnections: EducationConnectionPulse[];
   roleConfigs: Record<string, RoleRuntimeConfig>;
-  roleResultCards: Record<string, string>;
   onConfigureRole: (roleId: string) => void;
   onRunTeam: (connections: EducationConnection[]) => void;
   onPauseRun: () => void;
@@ -152,9 +151,7 @@ export function EducationModeOverlay({
   containerRef,
   zoom,
   panRef,
-  activeFlowConnections,
   roleConfigs,
-  roleResultCards,
   onConfigureRole,
   onRunTeam,
   onPauseRun,
@@ -170,8 +167,8 @@ export function EducationModeOverlay({
   const [connections, setConnections] = useState<EducationConnection[]>([]);
   const [connectionFeedbacks, setConnectionFeedbacks] = useState<ConnectionFeedback[]>([]);
   const [errorFeedback, setErrorFeedback] = useState<ErrorFeedback | null>(null);
+  const [roleInputHints, setRoleInputHints] = useState<Record<string, RoleInputHint>>({});
   const feedbackIdRef = useRef(0);
-  const seenFlowPulseIdsRef = useRef<Set<number>>(new Set());
   const rolePositionsRef = useRef<RolePosition[]>([]);
 
   useEffect(() => {
@@ -183,18 +180,6 @@ export function EducationModeOverlay({
     rafId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafId);
   }, []);
-
-  useEffect(() => {
-    for (const connection of activeFlowConnections) {
-      if (seenFlowPulseIdsRef.current.has(connection.pulseId)) continue;
-      seenFlowPulseIdsRef.current.add(connection.pulseId);
-      const id = ++feedbackIdRef.current;
-      setConnectionFeedbacks((prev) => [...prev, { id, ...connection }]);
-      window.setTimeout(() => {
-        setConnectionFeedbacks((prev) => prev.filter((feedback) => feedback.id !== id));
-      }, 1900);
-    }
-  }, [activeFlowConnections]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -318,9 +303,60 @@ export function EducationModeOverlay({
       return [...prev, { sourceRoleId, targetRoleId, card }];
     });
     setConnectionFeedbacks((prev) => [...prev, { id, sourceRoleId, targetRoleId, card }]);
+    setRoleInputHints((prev) => {
+      if (!prev[targetRoleId]) return prev;
+      const next = { ...prev };
+      delete next[targetRoleId];
+      return next;
+    });
     window.setTimeout(() => {
       setConnectionFeedbacks((prev) => prev.filter((feedback) => feedback.id !== id));
     }, 1900);
+  };
+
+  const getMissingInputHints = () => {
+    const active = new Set(placedRoles.map((role) => role.id));
+    const hints: Record<string, RoleInputHint> = {};
+    for (const role of placedRoles) {
+      const acceptedCards = ACCEPTS_CARD[role.id] ?? [];
+      if (acceptedCards.length === 0) continue;
+      const incomingCards = connections
+        .filter(
+          (connection) =>
+            connection.targetRoleId === role.id &&
+            active.has(connection.sourceRoleId) &&
+            acceptedCards.includes(connection.card),
+        )
+        .map((connection) => connection.card);
+      if (incomingCards.length > 0) continue;
+
+      const neededCards = acceptedCards
+        .filter((card) =>
+          placedRoles.some(
+            (sourceRole) => sourceRole.id !== role.id && sourceRole.abilityCards.includes(card),
+          ),
+        )
+        .slice(0, 3);
+      if (neededCards.length === 0) continue;
+
+      const id = ++feedbackIdRef.current;
+      hints[role.id] = {
+        id,
+        text: `我还缺${neededCards.join('或')}，请先把卡片交给我。`,
+      };
+    }
+    return hints;
+  };
+
+  const handleRunRequest = () => {
+    const hints = getMissingInputHints();
+    if (Object.keys(hints).length > 0) {
+      setRoleInputHints(hints);
+      showError('有角色还缺输入卡，先把卡片连好。');
+      return;
+    }
+    setRoleInputHints({});
+    onRunTeam(connections);
   };
 
   const getFailureText = (card: string, targetRoleId: string) => {
@@ -356,7 +392,7 @@ export function EducationModeOverlay({
             variant={canRun ? 'accent' : 'disabled'}
             size="icon_lg"
             disabled={!canRun}
-            onClick={() => onRunTeam(connections)}
+            onClick={handleRunRequest}
             title={canRun ? '运行小队' : '先把角色拖进房间'}
             aria-label="运行小队"
           >
@@ -410,7 +446,7 @@ export function EducationModeOverlay({
             <Button
               variant="accent"
               size="icon_lg"
-              onClick={() => onRunTeam(connections)}
+              onClick={handleRunRequest}
               title="按当前连接再运行一次"
               aria-label="再跑一次"
             >
@@ -431,7 +467,7 @@ export function EducationModeOverlay({
             <Button
               variant="accent"
               size="icon_lg"
-              onClick={() => onRunTeam(connections)}
+              onClick={handleRunRequest}
               title="重新运行当前小队"
               aria-label="再试一次"
             >
@@ -452,7 +488,7 @@ export function EducationModeOverlay({
             <Button
               variant="accent"
               size="icon_lg"
-              onClick={() => onRunTeam(connections)}
+              onClick={handleRunRequest}
               title="按当前连接重新运行"
               aria-label="再跑一次"
             >
@@ -530,28 +566,18 @@ export function EducationModeOverlay({
         </div>
       )}
 
-      {(connections.length > 0 || connectionFeedbacks.length > 0) && (
+      {isEditMode && (connections.length > 0 || connectionFeedbacks.length > 0) && (
         <svg className="absolute inset-0 z-33 pointer-events-none w-full h-full">
           <defs>
-            {[...connections, ...connectionFeedbacks].map((feedback, index) => {
-              const color = CARD_COLORS[feedback.card] ?? 'var(--color-accent-bright)';
-              return (
-                <marker
-                  key={`marker-${feedback.sourceRoleId}-${feedback.targetRoleId}-${feedback.card}-${index}`}
-                  id={`education-arrow-${feedback.sourceRoleId}-${feedback.targetRoleId}-${feedback.card}-${index}`}
-                  markerWidth="10"
-                  markerHeight="10"
-                  refX="8"
-                  refY="3"
-                  orient="auto"
-                  markerUnits="strokeWidth"
-                >
-                  <path d="M0,0 L0,6 L9,3 z" fill={color} />
-                </marker>
-              );
-            })}
+            <filter id="education-pulse-glow" x="-80%" y="-80%" width="260%" height="260%">
+              <feGaussianBlur stdDeviation="4" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
           </defs>
-          {connections.map((connection, index) => {
+          {connections.map((connection) => {
             const source = getPosition(connection.sourceRoleId);
             const target = getPosition(connection.targetRoleId);
             if (!source || !target) return null;
@@ -561,7 +587,6 @@ export function EducationModeOverlay({
                 source={source}
                 target={target}
                 card={connection.card}
-                markerId={`education-arrow-${connection.sourceRoleId}-${connection.targetRoleId}-${connection.card}-${index}`}
                 persistent
                 emphasized={
                   !hasFocusedConnections || focusedConnectionKeys.has(getConnectionKey(connection))
@@ -569,10 +594,11 @@ export function EducationModeOverlay({
                 muted={
                   hasFocusedConnections && !focusedConnectionKeys.has(getConnectionKey(connection))
                 }
+                showLoopPulse={isEditMode}
               />
             );
           })}
-          {connectionFeedbacks.map((feedback, index) => {
+          {connectionFeedbacks.map((feedback) => {
             const source = getPosition(feedback.sourceRoleId);
             const target = getPosition(feedback.targetRoleId);
             if (!source || !target) return null;
@@ -582,10 +608,10 @@ export function EducationModeOverlay({
                 source={source}
                 target={target}
                 card={feedback.card}
-                markerId={`education-arrow-${feedback.sourceRoleId}-${feedback.targetRoleId}-${feedback.card}-${connections.length + index}`}
                 persistent={false}
                 emphasized
                 muted={false}
+                showLoopPulse={false}
               />
             );
           })}
@@ -615,29 +641,7 @@ export function EducationModeOverlay({
           (deviceOffsetY + (ch.y + sittingOffset - TOOL_OVERLAY_VERTICAL_OFFSET) * zoom) / dpr;
 
         if (!isEditMode) {
-          const resultContent = roleResultCards[role.id];
-          if (ch.roleTaskState !== 'weather' && !resultContent) return null;
-          return (
-            <div
-              key={role.id}
-              className="absolute z-31 -translate-x-1/2 pixel-panel px-8 py-6 w-220 text-center pointer-events-none"
-              style={{ left: screenX, top: screenY - 88 }}
-            >
-              <div
-                className="inline-block border-2 bg-bg-dark px-7 py-3 text-xs leading-none"
-                style={{ borderColor: CARD_COLORS[role.resultCard] ?? undefined }}
-              >
-                {role.resultCard}
-              </div>
-              {resultContent ? (
-                <div className="mt-5 max-h-76 overflow-hidden text-xs leading-tight text-left text-text break-words">
-                  {formatResultCardPreview(resultContent)}
-                </div>
-              ) : (
-                <div className="text-xs leading-tight mt-4">{role.name}完成</div>
-              )}
-            </div>
-          );
+          return null;
         }
 
         return (
@@ -682,19 +686,19 @@ export function EducationModeOverlay({
                 <div className="mt-2 text-2xs text-text-muted">{configSummary}</div>
               ) : null}
             </div>
+            {roleInputHints[role.id] ? (
+              <div
+                key={roleInputHints[role.id].id}
+                className="pixel-panel px-7 py-5 max-w-220 text-xs leading-tight text-center border-warning bg-bg/95"
+              >
+                {roleInputHints[role.id].text}
+              </div>
+            ) : null}
           </div>
         );
       })}
     </>
   );
-}
-
-function formatResultCardPreview(content: string): string {
-  return content
-    .replace(/^\s*([^：:\n]{1,16}卡|趣味广播)[：:]\s*/u, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 96);
 }
 
 function IconGlyph({ children, label }: { children: string; label: string }) {
@@ -712,20 +716,20 @@ interface ConnectionCurveProps {
   source: RolePosition;
   target: RolePosition;
   card: string;
-  markerId: string;
   persistent: boolean;
   emphasized: boolean;
   muted: boolean;
+  showLoopPulse: boolean;
 }
 
 function ConnectionCurve({
   source,
   target,
   card,
-  markerId,
   persistent,
   emphasized,
   muted,
+  showLoopPulse,
 }: ConnectionCurveProps) {
   const sourceY = source.screenY - 104;
   const targetY = target.screenY - 56;
@@ -733,18 +737,29 @@ function ConnectionCurve({
   const color = CARD_COLORS[card] ?? 'var(--color-accent-bright)';
   const labelX = (source.screenX + target.screenX) / 2;
   const labelY = midY - 8;
-  const opacity = muted ? '0.16' : emphasized ? (persistent ? '0.82' : '0.9') : '0.55';
+  const opacity = muted ? '0.08' : emphasized ? (persistent ? '0.34' : '0.5') : '0.22';
+  const path = getConnectionPath(source, target);
 
   return (
     <g className={persistent ? 'education-connection-persistent' : 'education-connection-feedback'}>
+      {emphasized && !muted && (
+        <path
+          className="education-connection-sheen"
+          d={path}
+          fill="none"
+          stroke={color}
+          strokeWidth="7"
+          strokeLinecap="round"
+          opacity={persistent ? '0.08' : '0.16'}
+        />
+      )}
       <path
-        d={`M ${source.screenX} ${sourceY} C ${source.screenX} ${midY}, ${target.screenX} ${midY}, ${target.screenX} ${targetY}`}
+        d={path}
         fill="none"
         stroke={color}
-        strokeWidth={emphasized && !muted ? '5' : '4'}
+        strokeWidth={emphasized && !muted ? '4' : '3'}
         strokeLinecap="round"
         opacity={opacity}
-        markerEnd={`url(#${markerId})`}
       />
       <text
         x={labelX}
@@ -754,11 +769,31 @@ function ConnectionCurve({
         stroke="var(--education-card-label-stroke)"
         strokeWidth="4"
         paintOrder="stroke"
-        opacity={muted ? '0.24' : '1'}
+        opacity={muted ? '0.18' : '0.82'}
         style={{ fontSize: 18 }}
       >
         {card}
       </text>
+      {showLoopPulse && !muted && (
+        <>
+          <circle r="14" fill={color} opacity="0.18" filter="url(#education-pulse-glow)">
+            <animateMotion dur="2.6s" repeatCount="indefinite" path={path} />
+          </circle>
+          <circle r="6" fill={color} opacity="0.9" filter="url(#education-pulse-glow)">
+            <animateMotion dur="2.6s" repeatCount="indefinite" path={path} />
+          </circle>
+          <circle r="10" fill={color} opacity="0.1" filter="url(#education-pulse-glow)">
+            <animateMotion begin="1.3s" dur="2.6s" repeatCount="indefinite" path={path} />
+          </circle>
+        </>
+      )}
     </g>
   );
+}
+
+function getConnectionPath(source: RolePosition, target: RolePosition): string {
+  const sourceY = source.screenY - 104;
+  const targetY = target.screenY - 56;
+  const midY = Math.min(sourceY, targetY) - 72;
+  return `M ${source.screenX} ${sourceY} C ${source.screenX} ${midY}, ${target.screenX} ${midY}, ${target.screenX} ${targetY}`;
 }

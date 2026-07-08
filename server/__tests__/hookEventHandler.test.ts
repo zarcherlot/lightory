@@ -381,6 +381,41 @@ describe('HookEventHandler', () => {
     expect(mockWebview.messages).toHaveLength(0);
   });
 
+  it('ignores browser role task hook sessions', () => {
+    const onExternalSessionDetected = vi.fn();
+    handler.setLifecycleCallbacks({ onExternalSessionDetected });
+
+    handler.handleEvent('claude', {
+      hook_event_name: 'SessionStart',
+      session_id: 'pixel-role-weather-abc123',
+      source: 'startup',
+      transcript_path: '/projects/test/pixel-role-weather-abc123.jsonl',
+      cwd: '/projects/test',
+    });
+
+    handler.handleEvent('claude', {
+      hook_event_name: 'Stop',
+      session_id: 'pixel-role-weather-abc123',
+    });
+
+    handler.handleEvent('claude', {
+      hook_event_name: 'SessionStart',
+      session_id: 'opencode-generated-session',
+      source: 'startup',
+      cwd: '/projects/test',
+      lightory_role_task: true,
+    });
+
+    handler.handleEvent('claude', {
+      hook_event_name: 'Stop',
+      session_id: 'opencode-generated-session',
+      lightory_role_task: true,
+    });
+
+    expect(onExternalSessionDetected).not.toHaveBeenCalled();
+    expect(mockWebview.messages).toHaveLength(0);
+  });
+
   // ── SessionEnd ──────────────────────────────────────────────
 
   it('SessionEnd(reason=clear) sets pendingClear and marks waiting', () => {

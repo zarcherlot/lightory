@@ -133,6 +133,11 @@
   .education-connection-feedback {
     animation: education-connection-feedback 1.8s ease-out forwards;
   }
+
+  .education-connection-sheen {
+    stroke-dasharray: 18 26;
+    animation: education-connection-sheen 2.4s linear infinite;
+  }
 }
 
 @keyframes pixel-pulse {
@@ -161,5 +166,14 @@
   100% {
     opacity: 0;
     transform: translateY(-4px);
+  }
+}
+
+@keyframes education-connection-sheen {
+  from {
+    stroke-dashoffset: 44;
+  }
+  to {
+    stroke-dashoffset: 0;
   }
 }

@@ -57,6 +57,8 @@ async function postLightoryEvent(
       },
       body: JSON.stringify({
         cwd: ctx.worktree ?? ctx.directory,
+        lightory_role_task: process.env.LIGHTORY_ROLE_TASK === '1',
+        lightory_role_task_run_id: process.env.LIGHTORY_ROLE_TASK_RUN_ID,
         ...payload,
         session_id: sessionId,
       }),

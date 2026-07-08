@@ -480,7 +480,12 @@ function buildRoleTaskCommand(
           outputPath,
           '-',
         ],
-        env: buildRoleTaskEnv({ CODEX_SESSION_ID: `pixel-role-${runId}`, PWD: cwd }),
+        env: buildRoleTaskEnv({
+          CODEX_SESSION_ID: `pixel-role-${runId}`,
+          LIGHTORY_ROLE_TASK: '1',
+          LIGHTORY_ROLE_TASK_RUN_ID: runId,
+          PWD: cwd,
+        }),
         input: prompt,
         outputPath,
       };
@@ -489,7 +494,11 @@ function buildRoleTaskCommand(
       return {
         command: opencodeCommand,
         args: ['run', prompt],
-        env: buildRoleTaskEnv({ PWD: cwd }),
+        env: buildRoleTaskEnv({
+          LIGHTORY_ROLE_TASK: '1',
+          LIGHTORY_ROLE_TASK_RUN_ID: runId,
+          PWD: cwd,
+        }),
         displayCommand: opencodeCommand,
       };
     default:

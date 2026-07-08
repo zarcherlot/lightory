@@ -9,6 +9,7 @@ import { cancelPermissionTimer, cancelWaitingTimer } from './timerManager.js';
 import type { AgentState } from './types.js';
 
 const debug = process.env.LIGHTORY_DEBUG !== '0';
+const ROLE_TASK_SESSION_PREFIX = 'pixel-role-';
 
 /** Normalized hook event received from any provider's hook script via the HTTP server. */
 export interface HookEvent {
@@ -131,6 +132,9 @@ export class HookEventHandler {
   handleEvent(_providerId: string, event: HookEvent): void {
     if (this.provider.protocolVersion !== HookEventHandler.SUPPORTED_PROTOCOL_VERSION) {
       return; // version mismatch already logged in constructor
+    }
+    if (isRoleTaskHookEvent(event)) {
+      return;
     }
     // ── Provider normalization boundary ───────────────────────────────────────
     // All raw Claude-specific fields (tool_name, tool_input, agent_type, notification_type,
@@ -758,4 +762,8 @@ export class HookEventHandler {
   dispose(): void {
     this.sessionRouter.dispose();
   }
+}
+
+function isRoleTaskHookEvent(event: HookEvent): boolean {
+  return event.session_id.startsWith(ROLE_TASK_SESSION_PREFIX) || event.lightory_role_task === true;
 }

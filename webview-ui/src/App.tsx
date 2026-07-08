@@ -6,7 +6,6 @@ import { DebugView } from './components/DebugView.js';
 import { EditActionBar } from './components/EditActionBar.js';
 import {
   type EducationConnection,
-  type EducationConnectionPulse,
   EducationModeOverlay,
   type EducationRunStatus,
 } from './components/EducationModeOverlay.js';
@@ -172,16 +171,11 @@ function App() {
     useState<Record<string, RoleRuntimeConfig>>(createInitialRoleConfigs);
   const [configRoleId, setConfigRoleId] = useState<string | null>(null);
   const roleConfigsRef = useRef<Record<string, RoleRuntimeConfig>>(createInitialRoleConfigs());
-  const [activeFlowConnections, setActiveFlowConnections] = useState<EducationConnectionPulse[]>(
-    [],
-  );
-  const [roleResultCards, setRoleResultCards] = useState<Record<string, string>>({});
   const [educationRunStatus, setEducationRunStatus] = useState<EducationRunStatus>('idle');
   const runBatchesRef = useRef<string[][]>([]);
   const runConnectionsRef = useRef<EducationConnection[]>([]);
   const pausedBatchRef = useRef<string[] | null>(null);
   const pauseRequestedRef = useRef(false);
-  const flowPulseIdRef = useRef(0);
   const runningRoleIdsRef = useRef<Set<string>>(new Set());
   const roleAttemptCountsRef = useRef<Map<string, number>>(new Map());
   const roleOutputsRef = useRef<Map<string, string>>(new Map());
@@ -267,7 +261,6 @@ function App() {
       if (entry.status === 'done' && entry.content.trim()) {
         const content = entry.content.trim();
         roleOutputsRef.current.set(entry.roleId, content);
-        setRoleResultCards((prev) => ({ ...prev, [entry.roleId]: content }));
       }
     }
   }, [roleTaskConsoleEntries]);
@@ -335,20 +328,6 @@ function App() {
     (roleIds: string[]) => {
       setEducationRunStatus('running');
       runningRoleIdsRef.current = new Set(roleIds);
-      const roleIdSet = new Set(roleIds);
-      const incomingConnections = runConnectionsRef.current.filter((connection) =>
-        roleIdSet.has(connection.targetRoleId),
-      );
-      if (incomingConnections.length > 0) {
-        setActiveFlowConnections(
-          incomingConnections.map((connection) => ({
-            ...connection,
-            pulseId: ++flowPulseIdRef.current,
-          })),
-        );
-      } else {
-        setActiveFlowConnections([]);
-      }
       for (const roleId of roleIds) {
         startRoleTask(roleId);
       }
@@ -365,10 +344,8 @@ function App() {
       pausedBatchRef.current = null;
       roleAttemptCountsRef.current = new Map();
       roleOutputsRef.current = new Map();
-      setRoleResultCards({});
       seenRoleOutputEntryIdsRef.current = new Set();
       runConnectionsRef.current = connections;
-      setActiveFlowConnections([]);
       const batches = buildRoleRunBatches(activeRoleIds, connections);
       const firstBatch = batches.shift();
       runBatchesRef.current = batches;
@@ -398,7 +375,6 @@ function App() {
       runBatchesRef.current = [];
       pausedBatchRef.current = null;
       pauseRequestedRef.current = false;
-      setActiveFlowConnections([]);
       setEducationRunStatus('error');
       return;
     }
@@ -414,7 +390,6 @@ function App() {
         pausedBatchRef.current = nextBatch;
         pauseRequestedRef.current = false;
         clearRoleTaskVisuals(roleDefinitions.map((role) => role.id));
-        setActiveFlowConnections([]);
         setEducationRunStatus('paused');
         return;
       }
@@ -422,7 +397,6 @@ function App() {
       return;
     }
 
-    setActiveFlowConnections([]);
     setEducationRunStatus('completed');
   }, [clearRoleTaskVisuals, educationRunStatus, lastRoleTaskStatus, startRoleBatch, startRoleTask]);
 
@@ -450,7 +424,6 @@ function App() {
     runBatchesRef.current = [];
     pausedBatchRef.current = null;
     pauseRequestedRef.current = false;
-    setActiveFlowConnections([]);
     setEducationRunStatus('idle');
   }, [clearRoleTaskVisuals]);
 
@@ -460,7 +433,6 @@ function App() {
     runBatchesRef.current = [];
     pausedBatchRef.current = null;
     pauseRequestedRef.current = false;
-    setActiveFlowConnections([]);
     setEducationRunStatus('idle');
     editor.handleSetEditMode(true);
   }, [clearRoleTaskVisuals, editor]);
@@ -485,11 +457,9 @@ function App() {
       pausedBatchRef.current = null;
       roleAttemptCountsRef.current = new Map();
       roleOutputsRef.current = new Map();
-      setRoleResultCards({});
       seenRoleOutputEntryIdsRef.current = new Set();
       runConnectionsRef.current = [];
       runBatchesRef.current = [];
-      setActiveFlowConnections([]);
       window.setTimeout(() => startRoleBatch([config.roleId]), 0);
     },
     [editor, startRoleBatch],
@@ -618,9 +588,7 @@ function App() {
             containerRef={containerRef}
             zoom={editor.zoom}
             panRef={editor.panRef}
-            activeFlowConnections={activeFlowConnections}
             roleConfigs={roleConfigs}
-            roleResultCards={roleResultCards}
             onConfigureRole={handleConfigureRole}
             onRunTeam={handleRunTeam}
             onPauseRun={handlePauseRun}
