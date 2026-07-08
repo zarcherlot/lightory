@@ -50,13 +50,13 @@ export const roleDefinitions: RoleDefinition[] = [
   },
   {
     id: 'captain',
-    name: '公告员',
-    title: '公告',
+    name: '广播员',
+    title: '广播',
     palette: 3,
     taskFile: 'roles/captain.md',
     abilityCards: ['计划卡'],
-    resultCard: '准备清单',
-    responsibility: '整理大家的卡片，发布清楚、容易照做的准备公告。',
+    resultCard: '趣味广播',
+    responsibility: '为穿衣管家和出行管家的输出注入趣味性元素，再播报给大家。',
     roleTaskIcon: 'captain',
   },
 ];

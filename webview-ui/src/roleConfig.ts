@@ -96,7 +96,7 @@ export const defaultTravelRoleConfig: TravelRoleConfig = {
 
 export const defaultCaptainRoleConfig: CaptainRoleConfig = {
   audience: '小朋友',
-  tone: '清楚、亲切、像公告一样',
+  tone: '有趣、亲切、像广播一样',
   outputs: {
     weatherSummary: true,
     clothingSummary: true,
@@ -206,21 +206,22 @@ export function buildCaptainTaskMarkdown(config: CaptainRoleConfig): string {
   ].filter(Boolean);
 
   return [
-    '# 公告员任务',
+    '# 广播员任务',
     '',
-    '你是公告员，负责把大家的卡片整理成一份清楚、容易照做的准备公告。',
+    '你是广播员，负责为穿衣管家和出行管家的输出注入趣味性元素，并播报给大家。',
     '',
     '任务：',
     '',
-    '- 收集天气卡、穿衣卡、出行卡。',
-    `- 面向${config.audience}发布公告。`,
+    '- 重点读取穿衣卡和出行卡，并可参考天气卡补充背景。',
+    '- 把穿衣管家和出行管家的建议改写得更有画面感、更有趣，但不要改变原意。',
+    `- 面向${config.audience}进行广播。`,
     `- 语气要求：${config.tone}。`,
-    `- 公告必须包含：${outputItems.join('、') || '最终准备清单'}。`,
+    `- 广播必须包含：${outputItems.join('、') || '最终准备清单'}。`,
     '- 如果缺少关键卡片，请说明还需要哪个角色先补充。',
     '',
     '输出格式：',
     '',
-    '准备公告：',
+    '趣味广播：',
     '',
     '- <物品或行动>',
   ].join('\n');

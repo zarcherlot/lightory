@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react';
 
+import { getRoleDefinition } from '../roles.js';
+
 export interface RoleTaskConsoleEntry {
   id: number;
   runId: string;
@@ -24,7 +26,7 @@ export function RoleTaskConsole({ entries }: RoleTaskConsoleProps) {
   }, [entries]);
 
   return (
-    <section className="absolute left-0 right-0 bottom-0 z-[25] h-190 bg-bg-dark border-t-2 border-border shadow-pixel flex flex-col">
+    <section className="absolute right-0 top-0 bottom-0 z-[25] w-360 max-w-[42vw] bg-bg-dark border-l-2 border-border shadow-pixel flex flex-col">
       <div className="h-32 px-12 flex items-center justify-between border-b-2 border-border bg-bg">
         <span className="text-sm text-text">Console</span>
         <span className="text-2xs text-text-muted">Role task output</span>
@@ -44,12 +46,15 @@ export function RoleTaskConsole({ entries }: RoleTaskConsoleProps) {
                     : 'text-text'
               }`}
             >
-              {entry.stream === 'system' ? `[${entry.roleId}] ` : ''}
-              {entry.content}
+              {getRoleSpeakerName(entry.roleId)}：{entry.content}
             </pre>
           ))
         )}
       </div>
     </section>
   );
+}
+
+function getRoleSpeakerName(roleId: string): string {
+  return getRoleDefinition(roleId)?.name ?? roleId;
 }

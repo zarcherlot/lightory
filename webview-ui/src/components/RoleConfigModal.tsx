@@ -352,10 +352,10 @@ function CaptainSimpleEditor({ config, onChange }: CaptainSimpleEditorProps) {
       <SelectField
         label="播报语气"
         value={config.tone}
-        options={['清楚、亲切、像公告一样', '简短有力', '温柔提醒', '像清单一样']}
+        options={['有趣、亲切、像广播一样', '简短有力', '温柔提醒', '像故事开场一样']}
         onChange={(tone) => update({ tone })}
       />
-      <OptionPanel title="公告包含">
+      <OptionPanel title="广播包含">
         <Checkbox
           checked={config.outputs.weatherSummary}
           onChange={() => updateOutput('weatherSummary')}
