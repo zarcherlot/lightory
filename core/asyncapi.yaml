@@ -120,6 +120,7 @@ components:
       oneOf:
         - $ref: '#/components/schemas/WebviewReady'
         - $ref: '#/components/schemas/StartRoleTask'
+        - $ref: '#/components/schemas/ConsoleUserInput'
         - $ref: '#/components/schemas/FocusAgent'
         - $ref: '#/components/schemas/CloseAgent'
         - $ref: '#/components/schemas/SaveAgentSeats'
@@ -722,6 +723,19 @@ components:
       required: [markdown]
       properties:
         markdown:
+          type: string
+
+    ConsoleUserInput:
+      description: User text entered in the console, used for confirmations and environment declarations.
+      type: object
+      additionalProperties: false
+      required: [type, content]
+      properties:
+        type:
+          const: consoleUserInput
+        content:
+          type: string
+        roleId:
           type: string
 
     FocusAgent:

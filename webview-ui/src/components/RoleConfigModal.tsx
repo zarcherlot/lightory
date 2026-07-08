@@ -212,38 +212,38 @@ function WeatherSimpleEditor({ config, onChange }: WeatherSimpleEditorProps) {
 
   return (
     <SimpleGrid>
-      <TextField label="城市" value={config.city} onChange={(city) => update({ city })} />
+      <TextField label="家庭线索" value={config.city} onChange={(city) => update({ city })} />
       <SelectField
-        label="日期"
+        label="记录范围"
         value={config.date}
-        options={['今天', '明天', '后天', '本周末']}
+        options={['今天', '本次对话', '长期记忆', '待确认']}
         onChange={(date) => update({ date })}
       />
-      <OptionPanel title="天气卡包含">
+      <OptionPanel title="地图记忆卡包含">
         <Checkbox
           checked={config.outputs.condition}
           onChange={() => updateOutput('condition')}
-          label="天气情况"
+          label="房间或 POI"
         />
         <Checkbox
           checked={config.outputs.temperature}
           onChange={() => updateOutput('temperature')}
-          label="温度"
+          label="当前位置"
         />
         <Checkbox
           checked={config.outputs.rain}
           onChange={() => updateOutput('rain')}
-          label="是否下雨"
+          label="物品位置"
         />
         <Checkbox
           checked={config.outputs.wind}
           onChange={() => updateOutput('wind')}
-          label="风力"
+          label="禁行区"
         />
         <Checkbox
           checked={config.outputs.airQuality}
           onChange={() => updateOutput('airQuality')}
-          label="空气质量"
+          label="置信度"
         />
       </OptionPanel>
     </SimpleGrid>
@@ -266,32 +266,36 @@ function DresserSimpleEditor({ config, onChange }: DresserSimpleEditorProps) {
   return (
     <SimpleGrid>
       <TextField
-        label="活动场景"
+        label="操作目标"
         value={config.activity}
         onChange={(activity) => update({ activity })}
       />
       <SelectField
-        label="穿衣风格"
+        label="操作约束"
         value={config.style}
-        options={['舒服、方便活动', '保暖优先', '防雨优先', '清爽透气']}
+        options={['低速、避开人手、确认抓取目标', '只观察不抓取', '轻力抓取', '等待用户确认']}
         onChange={(style) => update({ style })}
       />
-      <OptionPanel title="穿衣卡包含">
-        <Checkbox checked={config.outputs.top} onChange={() => updateOutput('top')} label="上衣" />
+      <OptionPanel title="操作结果卡包含">
+        <Checkbox
+          checked={config.outputs.top}
+          onChange={() => updateOutput('top')}
+          label="目标物"
+        />
         <Checkbox
           checked={config.outputs.bottom}
           onChange={() => updateOutput('bottom')}
-          label="下装"
+          label="动作序列"
         />
         <Checkbox
           checked={config.outputs.shoes}
           onChange={() => updateOutput('shoes')}
-          label="鞋子"
+          label="速度/力度"
         />
         <Checkbox
           checked={config.outputs.accessories}
           onChange={() => updateOutput('accessories')}
-          label="可选配件"
+          label="停止条件"
         />
       </OptionPanel>
     </SimpleGrid>
@@ -314,36 +318,36 @@ function TravelSimpleEditor({ config, onChange }: TravelSimpleEditorProps) {
   return (
     <SimpleGrid>
       <TextField
-        label="目的地"
+        label="目标地点"
         value={config.destination}
         onChange={(destination) => update({ destination })}
       />
       <SelectField
-        label="出行方式"
+        label="移动方式"
         value={config.transport}
-        options={['步行或短途出行', '坐车出行', '骑行出行', '户外活动']}
+        options={['轮式底盘低速移动', '原地转向', '贴边慢行', '停止等待']}
         onChange={(transport) => update({ transport })}
       />
-      <OptionPanel title="出行卡包含">
+      <OptionPanel title="移动结果卡包含">
         <Checkbox
           checked={config.outputs.umbrella}
           onChange={() => updateOutput('umbrella')}
-          label="是否带伞"
+          label="路线段"
         />
         <Checkbox
           checked={config.outputs.waterBottle}
           onChange={() => updateOutput('waterBottle')}
-          label="水杯"
+          label="速度限制"
         />
         <Checkbox
           checked={config.outputs.sunProtection}
           onChange={() => updateOutput('sunProtection')}
-          label="防晒或防风"
+          label="避障策略"
         />
         <Checkbox
           checked={config.outputs.safety}
           onChange={() => updateOutput('safety')}
-          label="安全提醒"
+          label="停止条件"
         />
       </OptionPanel>
     </SimpleGrid>
@@ -373,29 +377,29 @@ function CaptainSimpleEditor({ config, onChange }: CaptainSimpleEditorProps) {
       <SelectField
         label="播报语气"
         value={config.tone}
-        options={['有趣、亲切、像广播一样', '简短有力', '温柔提醒', '像故事开场一样']}
+        options={['简短、明确、可确认', '温和提醒', '错误说明', '等待确认']}
         onChange={(tone) => update({ tone })}
       />
-      <OptionPanel title="广播包含">
+      <OptionPanel title="语音输出卡包含">
         <Checkbox
           checked={config.outputs.weatherSummary}
           onChange={() => updateOutput('weatherSummary')}
-          label="天气摘要"
+          label="确认问题"
         />
         <Checkbox
           checked={config.outputs.clothingSummary}
           onChange={() => updateOutput('clothingSummary')}
-          label="穿衣摘要"
+          label="执行提醒"
         />
         <Checkbox
           checked={config.outputs.travelSummary}
           onChange={() => updateOutput('travelSummary')}
-          label="出行摘要"
+          label="结果反馈"
         />
         <Checkbox
           checked={config.outputs.checklist}
           onChange={() => updateOutput('checklist')}
-          label="最终准备清单"
+          label="错误说明"
         />
       </OptionPanel>
     </SimpleGrid>
