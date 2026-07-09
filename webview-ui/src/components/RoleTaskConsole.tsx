@@ -15,13 +15,29 @@ export interface RoleTaskConsoleEntry {
 interface RoleTaskConsoleProps {
   entries: RoleTaskConsoleEntry[];
   isSettingsOpen: boolean;
+  robotConnected?: boolean;
+  robotStatusText?: string;
+  hasActiveRobotPlan?: boolean;
+  hasPendingRobotConfirmation?: boolean;
   onToggleSettings: () => void;
+  onSubmitInput?: (content: string) => boolean;
+  onRobotEmergencyStop?: () => void;
+  onConfirmRobotPlan?: () => void;
+  onCancelRobotPlan?: () => void;
 }
 
 export function RoleTaskConsole({
   entries,
   isSettingsOpen,
+  robotConnected = false,
+  robotStatusText = 'Robot disconnected',
+  hasActiveRobotPlan = false,
+  hasPendingRobotConfirmation = false,
   onToggleSettings,
+  onSubmitInput,
+  onRobotEmergencyStop,
+  onConfirmRobotPlan,
+  onCancelRobotPlan,
 }: RoleTaskConsoleProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState('');
@@ -36,7 +52,8 @@ export function RoleTaskConsole({
   const sendInput = () => {
     const content = draft.trim();
     if (!content) return;
-    transport.send({ type: 'consoleUserInput', content });
+    const handled = onSubmitInput?.(content) ?? false;
+    if (!handled) transport.send({ type: 'consoleUserInput', content });
     setDraft('');
   };
 
@@ -45,7 +62,21 @@ export function RoleTaskConsole({
       <div className="h-32 px-12 flex items-center justify-between border-b-2 border-border bg-bg">
         <span className="text-sm text-text">Console</span>
         <div className="flex items-center gap-8">
-          <span className="text-2xs text-text-muted">Robot runtime</span>
+          <span
+            className={robotConnected ? 'text-2xs text-status-success' : 'text-2xs text-text-muted'}
+          >
+            {robotStatusText}
+          </span>
+          <button
+            type="button"
+            className="w-44 h-20 border-2 border-danger bg-danger text-white text-2xs leading-none cursor-pointer shadow-pixel disabled:opacity-50 disabled:cursor-default"
+            onClick={onRobotEmergencyStop}
+            disabled={!robotConnected && !hasActiveRobotPlan}
+            title="Emergency stop"
+            aria-label="Emergency stop"
+          >
+            急停
+          </button>
           <button
             type="button"
             className={`w-20 h-20 border-2 flex items-center justify-center text-sm leading-none cursor-pointer ${
@@ -63,7 +94,9 @@ export function RoleTaskConsole({
       </div>
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-12 py-8 text-2xs leading-tight">
         {entries.length === 0 ? (
-          <div className="text-text-muted">输入环境信息或确认回复，例如：这里是主卧。</div>
+          <div className="text-text-muted">
+            输入环境信息或控制命令，例如：这里是主卧、去主卧、说你好。
+          </div>
         ) : (
           entries.map((entry) => (
             <pre
@@ -81,6 +114,25 @@ export function RoleTaskConsole({
           ))
         )}
       </div>
+      {hasPendingRobotConfirmation && (
+        <div className="border-t-2 border-border bg-bg px-8 py-8 flex items-center gap-6">
+          <span className="min-w-0 flex-1 text-2xs text-warning">高风险移动计划等待用户确认</span>
+          <button
+            type="button"
+            className="w-52 border-2 border-accent bg-accent text-white text-2xs leading-none cursor-pointer shadow-pixel"
+            onClick={onConfirmRobotPlan}
+          >
+            确认
+          </button>
+          <button
+            type="button"
+            className="w-52 border-2 border-border bg-btn-bg text-text text-2xs leading-none cursor-pointer"
+            onClick={onCancelRobotPlan}
+          >
+            取消
+          </button>
+        </div>
+      )}
       <form
         className="border-t-2 border-border bg-bg px-8 py-8 flex gap-6"
         onSubmit={(event) => {

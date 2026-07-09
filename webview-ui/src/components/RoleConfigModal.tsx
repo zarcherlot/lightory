@@ -219,7 +219,7 @@ function WeatherSimpleEditor({ config, onChange }: WeatherSimpleEditorProps) {
         options={['今天', '本次对话', '长期记忆', '待确认']}
         onChange={(date) => update({ date })}
       />
-      <OptionPanel title="地图记忆卡包含">
+      <OptionPanel title="家庭记忆员包含">
         <Checkbox
           checked={config.outputs.condition}
           onChange={() => updateOutput('condition')}
@@ -276,7 +276,7 @@ function DresserSimpleEditor({ config, onChange }: DresserSimpleEditorProps) {
         options={['低速、避开人手、确认抓取目标', '只观察不抓取', '轻力抓取', '等待用户确认']}
         onChange={(style) => update({ style })}
       />
-      <OptionPanel title="操作结果卡包含">
+      <OptionPanel title="机械臂操作员包含">
         <Checkbox
           checked={config.outputs.top}
           onChange={() => updateOutput('top')}
@@ -328,7 +328,7 @@ function TravelSimpleEditor({ config, onChange }: TravelSimpleEditorProps) {
         options={['轮式底盘低速移动', '原地转向', '贴边慢行', '停止等待']}
         onChange={(transport) => update({ transport })}
       />
-      <OptionPanel title="移动结果卡包含">
+      <OptionPanel title="底盘驾驶员包含">
         <Checkbox
           checked={config.outputs.umbrella}
           onChange={() => updateOutput('umbrella')}
@@ -380,7 +380,7 @@ function CaptainSimpleEditor({ config, onChange }: CaptainSimpleEditorProps) {
         options={['简短、明确、可确认', '温和提醒', '错误说明', '等待确认']}
         onChange={(tone) => update({ tone })}
       />
-      <OptionPanel title="语音输出卡包含">
+      <OptionPanel title="语音播报员包含">
         <Checkbox
           checked={config.outputs.weatherSummary}
           onChange={() => updateOutput('weatherSummary')}

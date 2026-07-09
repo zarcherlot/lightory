@@ -1,0 +1,229 @@
+import { validateRobotPlanLocally } from './robotPlanSchema.js';
+import type {
+  PlanValidationResult,
+  RobotApiClient,
+  RobotApiEnvelope,
+  RobotEvent,
+  RobotEventClient,
+  RobotHealth,
+  RobotPlan,
+  RobotPlanState,
+  RobotToolDefinition,
+} from './types.js';
+
+const mockTools: RobotToolDefinition[] = [
+  tool('speech.say', 'speech', 'low', false, 5000, '扬声器播报短句'),
+  tool('led.setMode', 'led', 'low', false, 2000, '设置 LED 状态'),
+  tool('memory.getPoi', 'memory', 'low', false, 2000, '查询 POI'),
+  tool('memory.upsertPoi', 'memory', 'medium', false, 3000, '写入 POI'),
+  tool('base.state', 'base', 'low', false, 1000, '查询底盘状态'),
+  tool('base.stop', 'base', 'critical', false, 1000, '底盘急停'),
+  tool('base.followPath', 'base', 'high', true, 30000, '低速路径执行', 'base'),
+  tool('arm.state', 'arm', 'low', false, 1000, '查询机械臂状态'),
+  tool('arm.stop', 'arm', 'critical', false, 1000, '机械臂急停'),
+  tool('arm.grasp', 'arm', 'high', true, 15000, '抓取物体', 'arm'),
+  tool('arm.place', 'arm', 'high', true, 15000, '放置物体', 'arm'),
+  tool('vision.snapshot', 'vision', 'low', false, 2000, '获取低频视觉摘要'),
+  tool('watchdog.acquire', 'watchdog', 'medium', false, 1000, '获取动作 lease'),
+  tool('watchdog.heartbeat', 'watchdog', 'medium', false, 1000, '维持动作 lease'),
+  tool('watchdog.release', 'watchdog', 'medium', false, 1000, '释放动作 lease'),
+];
+
+export class MockRobotEventBus implements RobotEventClient {
+  private handlers = new Set<(event: RobotEvent) => void>();
+  private eventSeq = 0;
+
+  async connect(): Promise<void> {
+    this.emit({
+      type: 'robot.status',
+      data: { connected: true, batteryPercent: 88, mode: 'mock' },
+    });
+  }
+
+  subscribe(handler: (event: RobotEvent) => void): () => void {
+    this.handlers.add(handler);
+    return () => this.handlers.delete(handler);
+  }
+
+  close(): void {
+    this.handlers.clear();
+  }
+
+  emit(event: RobotEvent): void {
+    const eventWithId = { ...event, eventId: `mock_evt_${++this.eventSeq}` } as RobotEvent;
+    for (const handler of this.handlers) handler(eventWithId);
+  }
+}
+
+export class MockRobotApiClient implements RobotApiClient {
+  private plans = new Map<string, { plan: RobotPlan; state: RobotPlanState }>();
+  private readonly events: MockRobotEventBus;
+
+  constructor(events: MockRobotEventBus) {
+    this.events = events;
+  }
+
+  async getHealth(): Promise<RobotHealth> {
+    return { ok: true, robotId: 'mock-robot-001', softwareVersion: 'mock-0.1.0' };
+  }
+
+  async getTools(): Promise<RobotToolDefinition[]> {
+    return mockTools;
+  }
+
+  async getTool(toolName: string): Promise<RobotToolDefinition> {
+    const toolDef = mockTools.find((item) => item.name === toolName);
+    if (!toolDef) throw new Error(`Unknown mock tool ${toolName}`);
+    return toolDef;
+  }
+
+  async validatePlan(plan: RobotPlan): Promise<PlanValidationResult> {
+    if (plan.intent.includes('validate-fail')) {
+      return {
+        ok: false,
+        planId: plan.planId,
+        errors: [{ code: 'mock_validate_failed', message: 'Mock validation failure.' }],
+        warnings: [],
+      };
+    }
+    return validateRobotPlanLocally(plan, mockTools);
+  }
+
+  async submitPlan(plan: RobotPlan): Promise<RobotPlanState> {
+    const state = createPlanState(plan);
+    this.plans.set(plan.planId, { plan, state });
+    this.events.emit({ type: 'plan.accepted', planId: plan.planId });
+    return state;
+  }
+
+  async executePlan(planId: string): Promise<RobotPlanState> {
+    const record = this.requirePlan(planId);
+    record.state.status = 'running';
+    this.events.emit({ type: 'plan.started', planId });
+    void this.runPlan(record.plan, record.state);
+    return record.state;
+  }
+
+  async stopPlan(planId: string, reason: string): Promise<RobotPlanState> {
+    const record = this.requirePlan(planId);
+    record.state.status = 'stopped';
+    for (const step of record.state.steps) {
+      if (step.status === 'pending' || step.status === 'running') step.status = 'skipped';
+    }
+    this.events.emit({ type: 'plan.stopped', planId, reason });
+    return record.state;
+  }
+
+  async getPlanState(planId: string): Promise<RobotPlanState> {
+    return this.requirePlan(planId).state;
+  }
+
+  async stopAll(reason: string): Promise<void> {
+    for (const [planId, record] of this.plans.entries()) {
+      if (record.state.status === 'running') {
+        await this.stopPlan(planId, reason);
+      }
+    }
+    this.events.emit({ type: 'safety.blocked', reason });
+  }
+
+  private requirePlan(planId: string): { plan: RobotPlan; state: RobotPlanState } {
+    const record = this.plans.get(planId);
+    if (!record) throw new Error(`Unknown plan ${planId}`);
+    return record;
+  }
+
+  private async runPlan(plan: RobotPlan, state: RobotPlanState): Promise<void> {
+    for (const step of state.steps) {
+      if (state.status !== 'running') return;
+      state.currentStepId = step.id;
+      step.status = 'running';
+      step.startedAt = new Date().toISOString();
+      this.events.emit({ type: 'plan.step.started', planId: plan.planId, stepId: step.id });
+      await delay(420);
+      if (plan.intent.includes('step-fail') && step.id === 's2') {
+        step.status = 'failed';
+        state.status = 'failed';
+        const result = envelope(false, `Step ${step.id} failed`);
+        step.result = result;
+        this.events.emit({
+          type: 'plan.step.failed',
+          planId: plan.planId,
+          stepId: step.id,
+          result,
+        });
+        this.events.emit({
+          type: 'plan.failed',
+          planId: plan.planId,
+          error: { code: 'mock_step_failed', retryable: false },
+        });
+        return;
+      }
+      step.status = 'done';
+      step.endedAt = new Date().toISOString();
+      const result = envelope(true, `${step.tool} done`);
+      step.result = result;
+      this.events.emit({ type: 'plan.step.done', planId: plan.planId, stepId: step.id, result });
+    }
+    state.currentStepId = undefined;
+    state.status = 'done';
+    this.events.emit({ type: 'plan.done', planId: plan.planId });
+  }
+}
+
+export function getMockRobotTools(): RobotToolDefinition[] {
+  return mockTools;
+}
+
+function tool(
+  name: RobotToolDefinition['name'],
+  category: RobotToolDefinition['category'],
+  risk: RobotToolDefinition['risk'],
+  requiresConfirmation: boolean,
+  timeoutMs: number,
+  description: string,
+  requiresLease?: RobotToolDefinition['requiresLease'],
+): RobotToolDefinition {
+  return {
+    name,
+    version: '1.0.0',
+    category,
+    description,
+    inputSchema: { type: 'object' },
+    outputSchema: { type: 'object' },
+    risk,
+    requiresConfirmation,
+    requiresLease,
+    timeoutMs,
+  };
+}
+
+function createPlanState(plan: RobotPlan): RobotPlanState {
+  return {
+    planId: plan.planId,
+    status: 'pending',
+    steps: plan.steps.map((step) => ({
+      id: step.id,
+      tool: step.tool,
+      status: 'pending',
+    })),
+  };
+}
+
+function envelope(ok: boolean, message: string): RobotApiEnvelope {
+  const now = new Date().toISOString();
+  return {
+    schemaVersion: 'robot-api/v1',
+    ok,
+    requestId: `mock_req_${Date.now().toString(36)}`,
+    status: ok ? 'done' : 'hardware_error',
+    message,
+    data: {},
+    timing: { startedAt: now, endedAt: now, durationMs: 0 },
+    robot: { robotId: 'mock-robot-001', hostname: 'mock-robot', softwareVersion: 'mock-0.1.0' },
+  };
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => globalThis.setTimeout(resolve, ms));
+}

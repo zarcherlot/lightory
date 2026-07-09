@@ -3,41 +3,29 @@ import { useEffect, useRef, useState } from 'react';
 import { CHARACTER_SITTING_OFFSET_PX, TOOL_OVERLAY_VERTICAL_OFFSET } from '../constants.js';
 import type { OfficeState } from '../office/engine/officeState.js';
 import { CharacterState, TILE_SIZE } from '../office/types.js';
-import { getRoleConfigSummary, type RoleRuntimeConfig } from '../roleConfig.js';
 import { getRoleAgentId, roleDefinitions } from '../roles.js';
 import { Button } from './ui/Button.js';
 
 const CARD_COLORS: Record<string, string> = {
-  地图记忆卡: 'var(--education-card-route)',
-  操作结果卡: 'var(--education-card-dresser)',
-  移动结果卡: 'var(--education-card-travel)',
-  语音输出卡: 'var(--education-card-plan)',
-  路线卡: 'var(--education-card-route)',
-  路线提醒卡: 'var(--education-card-route)',
-  视觉事实卡: 'var(--education-card-knowledge)',
-  诊断卡: 'var(--education-card-math)',
-  听觉事实卡: 'var(--education-card-translate)',
-  任务计划卡: 'var(--education-card-story)',
-  'LED 状态卡': 'var(--education-card-poster)',
-  安全许可卡: 'var(--education-card-check)',
-  用户意图卡: 'var(--education-card-summary)',
-  确认请求卡: 'var(--education-card-question)',
+  家庭记忆员: 'var(--education-card-route)',
+  机械臂操作员: 'var(--education-card-dresser)',
+  底盘驾驶员: 'var(--education-card-travel)',
+  语音播报员: 'var(--education-card-plan)',
+  视觉观察员: 'var(--education-card-knowledge)',
+  任务规划员: 'var(--education-card-story)',
+  'LED 表情员': 'var(--education-card-poster)',
+  安全监督员: 'var(--education-card-check)',
 };
 
 const ACCEPTS_CARD: Record<string, string[]> = {
-  weather: ['用户意图卡', '听觉事实卡', '视觉事实卡'],
-  dresser: ['任务计划卡', '视觉事实卡', '安全许可卡', '确认请求卡'],
-  travel: ['路线卡', '安全许可卡', '视觉事实卡', '诊断卡'],
-  captain: ['确认请求卡', '任务计划卡', '移动结果卡', '操作结果卡', '诊断卡'],
-  navigator: ['任务计划卡', '地图记忆卡', '视觉事实卡', '诊断卡'],
-  encyclopedia: ['任务计划卡', '确认请求卡'],
-  calculator: ['任务计划卡', '诊断卡'],
-  translator: ['用户意图卡', '确认请求卡'],
-  storyteller: ['用户意图卡', '地图记忆卡', '视觉事实卡', '听觉事实卡', '诊断卡'],
-  poster: ['任务计划卡', '确认请求卡', '移动结果卡', '操作结果卡', '诊断卡'],
-  checker: ['任务计划卡', '路线卡', '视觉事实卡', '诊断卡', '确认请求卡'],
-  summarizer: ['听觉事实卡', '确认请求卡'],
-  questioner: ['任务计划卡', '安全许可卡', '诊断卡'],
+  storyteller: ['家庭记忆员', '视觉观察员'],
+  checker: ['任务规划员', '视觉观察员', '家庭记忆员'],
+  weather: ['任务规划员', '视觉观察员'],
+  travel: ['任务规划员', '安全监督员', '家庭记忆员', '视觉观察员'],
+  dresser: ['任务规划员', '安全监督员', '视觉观察员'],
+  encyclopedia: ['任务规划员', '安全监督员'],
+  captain: ['任务规划员', '安全监督员', '底盘驾驶员', '机械臂操作员'],
+  poster: ['任务规划员', '安全监督员', '底盘驾驶员', '机械臂操作员'],
 };
 
 interface DraggedCard {
@@ -84,7 +72,6 @@ interface EducationModeOverlayProps {
   containerRef: React.RefObject<HTMLDivElement | null>;
   zoom: number;
   panRef: React.RefObject<{ x: number; y: number }>;
-  roleConfigs: Record<string, RoleRuntimeConfig>;
   onConfigureRole: (roleId: string) => void;
   onRunTeam: (connections: EducationConnection[]) => void;
   onPauseRun: () => void;
@@ -101,7 +88,6 @@ export function EducationModeOverlay({
   containerRef,
   zoom,
   panRef,
-  roleConfigs,
   onConfigureRole,
   onRunTeam,
   onPauseRun,
@@ -292,7 +278,7 @@ export function EducationModeOverlay({
       const id = ++feedbackIdRef.current;
       hints[role.id] = {
         id,
-        text: `我还缺${neededCards.join('或')}，请先把卡片交给我。`,
+        text: `我还缺${neededCards.join('或')}的输入。`,
       };
     }
     return hints;
@@ -302,7 +288,7 @@ export function EducationModeOverlay({
     const hints = getMissingInputHints();
     if (Object.keys(hints).length > 0) {
       setRoleInputHints(hints);
-      showError('有角色还缺输入卡，先把卡片连好。');
+      showError('有角色还缺输入，先把协作关系连好。');
       return;
     }
     setRoleInputHints({});
@@ -331,7 +317,7 @@ export function EducationModeOverlay({
     <>
       <div className="absolute top-10 left-10 z-30 pixel-panel px-10 py-8 max-w-360">
         <div className="flex items-center justify-between gap-8 mb-4">
-          <div className="text-sm leading-tight text-text-muted">任务卡</div>
+          <div className="text-sm leading-tight text-text-muted">角色编排</div>
           {statusText ? (
             <div className="text-xs leading-none text-text-muted">{statusText}</div>
           ) : null}
@@ -580,7 +566,6 @@ export function EducationModeOverlay({
       {roleDefinitions.map((role) => {
         const ch = officeState.characters.get(getRoleAgentId(role.id));
         if (!ch) return null;
-        const configSummary = getRoleConfigSummary(roleConfigs[role.id]);
 
         const sittingOffset =
           ch.state === CharacterState.TYPE || ch.state === CharacterState.BUSY
@@ -630,12 +615,6 @@ export function EducationModeOverlay({
                 {card}
               </div>
             ))}
-            <div className="px-7 py-3 bg-bg-dark/90 border-2 border-border text-xs leading-tight max-w-180 text-center">
-              {role.name}
-              {configSummary ? (
-                <div className="mt-2 text-2xs text-text-muted">{configSummary}</div>
-              ) : null}
-            </div>
             {roleInputHints[role.id] ? (
               <div
                 key={roleInputHints[role.id].id}

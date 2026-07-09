@@ -143,7 +143,7 @@ const GENERIC_ROLE_PROFILES: Record<
   navigator: {
     heading: '领航员任务',
     persona: '你是桌面机器人的领航员，负责读取地图记忆、POI 和视觉事实，规划底盘路线。',
-    cardName: '路线卡',
+    cardName: '路线输入',
     defaultTopic: '从当前位置移动到主卧',
     defaultStyle: '低速、安全、可执行',
     defaultInclude: '目标 POI、关键路标、禁行区、到达判定',
@@ -151,7 +151,7 @@ const GENERIC_ROLE_PROFILES: Record<
   encyclopedia: {
     heading: '视觉观察员任务',
     persona: '你是桌面机器人的视觉观察员，负责把摄像头画面整理成可给规划和安全角色使用的事实。',
-    cardName: '视觉事实卡',
+    cardName: '视觉观察员',
     defaultTopic: '观察桌面、通道、人物和目标物',
     defaultStyle: '客观、结构化、只描述可见事实',
     defaultInclude: '物体、方位、距离估计、通道、风险',
@@ -159,7 +159,7 @@ const GENERIC_ROLE_PROFILES: Record<
   calculator: {
     heading: '状态诊断员任务',
     persona: '你是桌面机器人的状态诊断员，负责汇总硬件与软件运行状态。',
-    cardName: '诊断卡',
+    cardName: '状态诊断',
     defaultTopic: '检查移动、机械臂、视觉、麦克风、扬声器和电量状态',
     defaultStyle: '简短、分级、可排障',
     defaultInclude: '可用能力、异常状态、是否允许继续执行',
@@ -167,7 +167,7 @@ const GENERIC_ROLE_PROFILES: Record<
   translator: {
     heading: '听觉监听员任务',
     persona: '你是桌面机器人的听觉监听员，负责把麦克风输入整理成事实。',
-    cardName: '听觉事实卡',
+    cardName: '听觉监听员',
     defaultTopic: '识别用户说话、确认回复和环境声音',
     defaultStyle: '准确、保留不确定性',
     defaultInclude: '原话摘要、说话人、置信度、是否为打断或确认',
@@ -175,7 +175,7 @@ const GENERIC_ROLE_PROFILES: Record<
   storyteller: {
     heading: '任务规划员任务',
     persona: '你是桌面机器人的任务规划员，负责把用户意图拆成可协调的角色步骤。',
-    cardName: '任务计划卡',
+    cardName: '任务规划员',
     defaultTopic: '用户要求机器人去主卧并递一个物品',
     defaultStyle: '可执行、可中断、先安全后动作',
     defaultInclude: '目标、前置确认、观察、导航、移动、操作、反馈',
@@ -183,7 +183,7 @@ const GENERIC_ROLE_PROFILES: Record<
   poster: {
     heading: 'LED 表情员任务',
     persona: '你是桌面机器人的 LED 表情员，负责把机器人状态转换成灯效。',
-    cardName: 'LED 状态卡',
+    cardName: 'LED 表情员',
     defaultTopic: '为等待确认、执行中、成功、错误和安全停止设计灯效',
     defaultStyle: '清晰、克制、不打扰',
     defaultInclude: '颜色、闪烁节奏、触发状态、结束条件',
@@ -191,7 +191,7 @@ const GENERIC_ROLE_PROFILES: Record<
   checker: {
     heading: '安全监督员任务',
     persona: '你是桌面机器人的安全监督员，负责审查移动和机械臂动作。',
-    cardName: '安全许可卡',
+    cardName: '安全监督员',
     defaultTopic: '检查去主卧和递物动作是否安全',
     defaultStyle: '保守、明确、必要时要求确认',
     defaultInclude: '允许/禁止、风险点、需要用户确认的问题、停止条件',
@@ -199,7 +199,7 @@ const GENERIC_ROLE_PROFILES: Record<
   summarizer: {
     heading: '交互入口员任务',
     persona: '你是桌面机器人的交互入口员，负责接收用户输入并判断输入类型。',
-    cardName: '用户意图卡',
+    cardName: '用户意图',
     defaultTopic: '用户说：这里是主卧，之后把眼镜递给我',
     defaultStyle: '短句、结构化、可路由',
     defaultInclude: '输入类型、用户意图、环境声明、需要确认的字段',
@@ -207,7 +207,7 @@ const GENERIC_ROLE_PROFILES: Record<
   questioner: {
     heading: '确认追问员任务',
     persona: '你是桌面机器人的确认追问员，负责在信息不足或动作有风险时向用户发起确认。',
-    cardName: '确认请求卡',
+    cardName: '确认请求',
     defaultTopic: '确认目标房间、目标物和是否允许机械臂靠近用户',
     defaultStyle: '一次只问关键问题',
     defaultInclude: '问题、默认安全动作、可接受回答',
@@ -247,12 +247,12 @@ export function buildWeatherTaskMarkdown(config: WeatherRoleConfig): string {
     '',
     `- 已知家庭线索：${config.city}。`,
     `- 记录时间范围：${config.date}。`,
-    `- 地图记忆卡必须包含：${outputItems.join('、') || 'POI 和环境声明'}。`,
+    `- 家庭记忆员必须包含：${outputItems.join('、') || 'POI 和环境声明'}。`,
     '- 如果用户声明“这里是主卧”之类信息，请整理成可持久化 POI 记录。',
     '',
     '输出格式：',
     '',
-    '地图记忆卡：<POI、房间别名、物品位置或待确认字段>',
+    '家庭记忆员：<POI、房间别名、物品位置或待确认字段>',
   ].join('\n');
 }
 
@@ -273,12 +273,12 @@ export function buildDresserTaskMarkdown(config: DresserRoleConfig): string {
     '',
     `- 操作目标：${config.activity}。`,
     `- 操作约束：${config.style}。`,
-    `- 操作结果卡必须包含：${outputItems.join('、') || '动作、约束、停止条件'}。`,
+    `- 机械臂操作员必须包含：${outputItems.join('、') || '动作、约束、停止条件'}。`,
     '- 如果缺少视觉事实或安全许可，请要求先确认，不要输出执行动作。',
     '',
     '输出格式：',
     '',
-    '操作结果卡：<机械臂动作、约束、停止条件或需要确认的问题>',
+    '机械臂操作员：<机械臂动作、约束、停止条件或需要确认的问题>',
   ].join('\n');
 }
 
@@ -299,12 +299,12 @@ export function buildTravelTaskMarkdown(config: TravelRoleConfig): string {
     '',
     `- 目标地点：${config.destination}。`,
     `- 移动方式：${config.transport}。`,
-    `- 移动结果卡必须包含：${outputItems.join('、') || '动作序列、进度、停止条件'}。`,
-    '- 如果缺少路线卡或安全许可，请停止并说明缺口。',
+    `- 底盘驾驶员必须包含：${outputItems.join('、') || '动作序列、进度、停止条件'}。`,
+    '- 如果缺少路线输入或安全许可，请停止并说明缺口。',
     '',
     '输出格式：',
     '',
-    '移动结果卡：<底盘动作序列、进度、失败原因或停止条件>',
+    '底盘驾驶员：<底盘动作序列、进度、失败原因或停止条件>',
   ].join('\n');
 }
 
@@ -323,16 +323,16 @@ export function buildCaptainTaskMarkdown(config: CaptainRoleConfig): string {
     '',
     '任务：',
     '',
-    '- 重点读取确认请求卡、任务计划卡、移动结果卡、操作结果卡或诊断卡。',
+    '- 重点读取确认请求、任务规划员、底盘驾驶员、机械臂操作员或状态诊断。',
     '- 输出一句到三句可直接朗读的话。',
     `- 面向${config.audience}播报。`,
     `- 语气要求：${config.tone}。`,
-    `- 语音输出卡必须包含：${outputItems.join('、') || '确认、提醒、结果'}。`,
+    `- 语音播报员必须包含：${outputItems.join('、') || '确认、提醒、结果'}。`,
     '- 对确认问题保持简短，一次只问关键问题。',
     '',
     '输出格式：',
     '',
-    '语音输出卡：<可朗读文本>',
+    '语音播报员：<可朗读文本>',
   ].join('\n');
 }
 
@@ -353,7 +353,7 @@ export function buildGenericTaskMarkdown(
     `- 面向：${config.audience}。`,
     `- 风格：${config.style}。`,
     `- 必须包含：${config.include}。`,
-    '- 如果收到上游卡片，请优先参考上游卡片；如果信息不够，请说清楚还需要什么。',
+    '- 如果收到上游角色输入，请优先参考上游角色输入；如果信息不够，请说清楚还需要什么。',
     '',
     '输出格式：',
     '',
@@ -484,7 +484,7 @@ function parseWeatherTaskMarkdown(
 ): WeatherRoleConfig {
   const query = matchText(markdown, /查询(.+?)的天气[。.\n]/u);
   const { city, date } = splitCityDate(query, fallback.city, fallback.date);
-  const contains = parseContains(markdown, '天气卡必须包含');
+  const contains = parseContains(markdown, '家庭记忆员必须包含');
 
   return {
     city,
@@ -503,7 +503,7 @@ function parseDresserTaskMarkdown(
   markdown: string,
   fallback: DresserRoleConfig,
 ): DresserRoleConfig {
-  const contains = parseContains(markdown, '穿衣卡必须包含');
+  const contains = parseContains(markdown, '机械臂操作员必须包含');
   return {
     activity: matchText(markdown, /为“(.+?)”给出穿衣建议/u) ?? fallback.activity,
     style: matchText(markdown, /穿衣风格要偏向：(.+?)[。.\n]/u) ?? fallback.style,
@@ -517,7 +517,7 @@ function parseDresserTaskMarkdown(
 }
 
 function parseTravelTaskMarkdown(markdown: string, fallback: TravelRoleConfig): TravelRoleConfig {
-  const contains = parseContains(markdown, '出行卡必须包含');
+  const contains = parseContains(markdown, '底盘驾驶员必须包含');
   return {
     destination: matchText(markdown, /为去“(.+?)”给出出行提醒/u) ?? fallback.destination,
     transport: matchText(markdown, /默认出行方式：(.+?)[。.\n]/u) ?? fallback.transport,

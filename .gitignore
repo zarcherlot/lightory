@@ -26,6 +26,9 @@ allure-report/
 # Build artifacts
 *.vsix
 *.map
+android-pad/.gradle/
+android-pad/app/build/
+android-pad/build/
 
 # Environment files
 .env*

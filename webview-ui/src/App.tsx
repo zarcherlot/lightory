@@ -11,7 +11,6 @@ import {
 } from './components/EducationModeOverlay.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
 import { RoleConfigModal } from './components/RoleConfigModal.js';
-import { RoleDock } from './components/RoleDock.js';
 import { RoleTaskConsole } from './components/RoleTaskConsole.js';
 import { SettingsModal } from './components/SettingsModal.js';
 import { Tooltip } from './components/Tooltip.js';
@@ -29,6 +28,8 @@ import { OfficeState } from './office/engine/officeState.js';
 import { isRotatable } from './office/layout/furnitureCatalog.js';
 import { getPetCount } from './office/sprites/petSpriteData.js';
 import { EditTool } from './office/types.js';
+import { parseRobotIntent, type RobotIntent } from './robot/robotPlanBuilder.js';
+import { useRobotRuntime } from './robot/useRobotRuntime.js';
 import { createDefaultRoleConfig, type RoleRuntimeConfig } from './roleConfig.js';
 import { getRoleAgentId, getRoleDefinition, roleDefinitions } from './roles.js';
 import { isE2E } from './runtime.js';
@@ -48,6 +49,17 @@ interface RoleTaskInputCard {
   card: string;
   content: string;
 }
+
+const ROBOT_ROLE_STAGE_ORDER = [
+  'storyteller',
+  'checker',
+  'weather',
+  'travel',
+  'dresser',
+  'encyclopedia',
+  'captain',
+  'poster',
+];
 
 // Test-only observability hooks (message/sound logs, addAgent wrapper, selectAgent).
 // Installed only under the e2e harness so they never patch prototypes or grow
@@ -166,6 +178,7 @@ function App() {
   const [hooksTooltipDismissed, setHooksTooltipDismissed] = useState(false);
   const [isDebugMode, setIsDebugMode] = useState(false);
   const [alwaysShowOverlay, setAlwaysShowOverlay] = useState(false);
+  const [showRoleVisualizer, setShowRoleVisualizer] = useState(true);
   const [activeRoleIds, setActiveRoleIds] = useState<Set<string>>(() => new Set());
   const [roleConfigs, setRoleConfigs] =
     useState<Record<string, RoleRuntimeConfig>>(createInitialRoleConfigs);
@@ -180,6 +193,7 @@ function App() {
   const roleAttemptCountsRef = useRef<Map<string, number>>(new Map());
   const roleOutputsRef = useRef<Map<string, string>>(new Map());
   const seenRoleOutputEntryIdsRef = useRef<Set<number>>(new Set());
+  const initialRobotRolesAddedRef = useRef(false);
 
   const currentMajorMinor = toMajorMinor(extensionVersion);
 
@@ -217,6 +231,7 @@ function App() {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const [editorTickForKeyboard, setEditorTickForKeyboard] = useState(0);
+  const robotRuntime = useRobotRuntime({ getOfficeState });
   useEditorKeyboard(
     editor.isEditMode,
     editorState,
@@ -253,6 +268,44 @@ function App() {
     os.cameraFollowId = id;
     setActiveRoleIds((prev) => new Set(prev).add(roleId));
   }, []);
+
+  const addRobotRolesToScene = useCallback((roleIds: string[]) => {
+    const os = getOfficeState();
+    const layout = os.getLayout();
+    const startCol = Math.max(1, Math.floor(layout.cols / 2) - Math.floor(roleIds.length / 2));
+    const row = Math.max(1, layout.rows - 3);
+
+    setShowRoleVisualizer(true);
+    setActiveRoleIds((prev) => {
+      const next = new Set(prev);
+      roleIds.forEach((roleId, index) => {
+        if (next.has(roleId)) return;
+        const role = getRoleDefinition(roleId);
+        if (!role) return;
+        const id = getRoleAgentId(roleId);
+        os.addRoleAgentAtTile(id, role.palette, startCol + index, row, role.name);
+        const ch = os.characters.get(id);
+        if (ch) ch.roleTaskIcon = role.roleTaskIcon;
+        next.add(roleId);
+      });
+      return next;
+    });
+  }, []);
+
+  const visualizeRobotIntent = useCallback(
+    (intent: RobotIntent | null) => {
+      if (!intent) return;
+      const roleIds = getRobotRolesForIntent(intent);
+      addRobotRolesToScene(roleIds);
+    },
+    [addRobotRolesToScene],
+  );
+
+  useEffect(() => {
+    if (!layoutReady || initialRobotRolesAddedRef.current) return;
+    initialRobotRolesAddedRef.current = true;
+    addRobotRolesToScene(ROBOT_ROLE_STAGE_ORDER);
+  }, [addRobotRolesToScene, layoutReady]);
 
   useEffect(() => {
     for (const entry of roleTaskConsoleEntries) {
@@ -580,24 +633,23 @@ function App() {
             alwaysShowOverlay={alwaysShowOverlay}
           />
 
-          <EducationModeOverlay
-            officeState={officeState}
-            activeRoleIds={activeRoleIds}
-            isEditMode={editor.isEditMode}
-            runStatus={educationRunStatus}
-            containerRef={containerRef}
-            zoom={editor.zoom}
-            panRef={editor.panRef}
-            roleConfigs={roleConfigs}
-            onConfigureRole={handleConfigureRole}
-            onRunTeam={handleRunTeam}
-            onPauseRun={handlePauseRun}
-            onResumeRun={handleResumeRun}
-            onStopRun={handleStopRun}
-            onBackToEdit={handleBackToEdit}
-          />
-
-          {editor.isEditMode && <RoleDock activeRoleIds={activeRoleIds} />}
+          {showRoleVisualizer && (
+            <EducationModeOverlay
+              officeState={officeState}
+              activeRoleIds={activeRoleIds}
+              isEditMode={editor.isEditMode}
+              runStatus={educationRunStatus}
+              containerRef={containerRef}
+              zoom={editor.zoom}
+              panRef={editor.panRef}
+              onConfigureRole={handleConfigureRole}
+              onRunTeam={handleRunTeam}
+              onPauseRun={handlePauseRun}
+              onResumeRun={handleResumeRun}
+              onStopRun={handleStopRun}
+              onBackToEdit={handleBackToEdit}
+            />
+          )}
 
           <RoleConfigModal
             roleId={configRoleId}
@@ -678,9 +730,21 @@ function App() {
       </Modal>
 
       <RoleTaskConsole
-        entries={roleTaskConsoleEntries}
+        entries={[...roleTaskConsoleEntries, ...robotRuntime.entries]}
         isSettingsOpen={isSettingsOpen}
+        robotConnected={robotRuntime.connected}
+        robotStatusText={robotRuntime.statusText}
+        hasActiveRobotPlan={robotRuntime.activePlanId !== null}
+        hasPendingRobotConfirmation={robotRuntime.pendingConfirmation !== null}
         onToggleSettings={() => setIsSettingsOpen((v) => !v)}
+        onSubmitInput={(content) => {
+          const intent = parseRobotIntent(content);
+          visualizeRobotIntent(intent);
+          return robotRuntime.handleConsoleInput(content);
+        }}
+        onRobotEmergencyStop={robotRuntime.emergencyStop}
+        onConfirmRobotPlan={robotRuntime.confirmPendingPlan}
+        onCancelRobotPlan={robotRuntime.cancelPendingPlan}
       />
 
       <VersionIndicator
@@ -703,6 +767,8 @@ function App() {
         onToggleDebugMode={handleToggleDebugMode}
         alwaysShowOverlay={alwaysShowOverlay}
         onToggleAlwaysShowOverlay={handleToggleAlwaysShowOverlay}
+        showRoleVisualizer={showRoleVisualizer}
+        onToggleRoleVisualizer={() => setShowRoleVisualizer((prev) => !prev)}
         externalAssetDirectories={externalAssetDirectories}
         watchAllSessions={watchAllSessions}
         onToggleWatchAllSessions={() => {
@@ -716,6 +782,11 @@ function App() {
           setHooksEnabled(newVal);
           transport.send({ type: 'setHooksEnabled', enabled: newVal });
         }}
+        robotConfig={robotRuntime.config}
+        robotConnected={robotRuntime.connected}
+        robotStatusText={robotRuntime.statusText}
+        robotTools={robotRuntime.tools}
+        onRobotConfigChange={robotRuntime.setConfig}
       />
 
       {showMigrationNotice && (
@@ -726,3 +797,13 @@ function App() {
 }
 
 export default App;
+
+function getRobotRolesForIntent(intent: RobotIntent): string[] {
+  if (intent.type === 'rememberPoi') return ['storyteller', 'weather'];
+  if (intent.type === 'moveToPoi') {
+    return ['storyteller', 'checker', 'weather', 'travel', 'encyclopedia', 'captain', 'poster'];
+  }
+  if (intent.type === 'speech') return ['storyteller', 'captain'];
+  if (intent.type === 'led') return ['storyteller', 'poster'];
+  return ROBOT_ROLE_STAGE_ORDER;
+}
