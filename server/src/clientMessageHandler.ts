@@ -45,7 +45,7 @@ export interface ClientMessageContext {
   onStartRoleTask?: StartRoleTaskSideEffect;
 }
 
-// ── Setting key constants ──
+// Setting key constants
 const KEY_SOUND_ENABLED = 'lightory.soundEnabled';
 const KEY_LAST_SEEN_VERSION = 'lightory.lastSeenVersion';
 const KEY_ALWAYS_SHOW_LABELS = 'lightory.alwaysShowLabels';
@@ -143,7 +143,7 @@ export function handleClientMessage(
         roleId,
         status: 'done',
         stream: 'system',
-        content: `用户输入：${content}\n${classifyConsoleInput(content)}\n`,
+        content,
       });
       break;
     }
@@ -175,16 +175,6 @@ export function handleClientMessage(
       // require IDE-specific handling (not yet implemented for standalone)
       break;
   }
-}
-
-function classifyConsoleInput(content: string): string {
-  if (/^(这里|这儿|当前|现在).{0,8}(是|在)/u.test(content) || /我是?在/u.test(content)) {
-    return '输入类型：环境声明。建议交给家庭记忆员记录 POI 或当前位置。';
-  }
-  if (/^(确认|可以|好的|是|对|同意|取消|不要|不行|停止|停)$/u.test(content)) {
-    return '输入类型：确认回复。建议交给确认追问员或安全监督员继续处理。';
-  }
-  return '输入类型：用户意图。建议交给交互入口员拆解任务。';
 }
 
 function parseRoleTaskInputCards(raw: unknown): RoleTaskInputCard[] {

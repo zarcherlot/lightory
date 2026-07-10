@@ -19,6 +19,7 @@ import {
   TOOL_OVERLAY_VERTICAL_OFFSET,
 } from '../../constants.js';
 import type { SubagentCharacter } from '../../hooks/useExtensionMessages.js';
+import { getRoleAgentId, roleDefinitions } from '../../roles.js';
 import type { OfficeState } from '../engine/officeState.js';
 import type { ToolActivity } from '../types.js';
 import { CharacterState, TILE_SIZE } from '../types.js';
@@ -119,8 +120,12 @@ export function ToolOverlay({
   const selectedId = officeState.selectedAgentId;
   const hoveredId = officeState.hoveredAgentId;
 
-  // All character IDs
-  const allIds = [...agents, ...subagentCharacters.map((s) => s.id)];
+  const roleAgentIds = roleDefinitions
+    .map((role) => getRoleAgentId(role.id))
+    .filter((id) => officeState.characters.has(id));
+  const allIds = Array.from(
+    new Set([...agents, ...subagentCharacters.map((s) => s.id), ...roleAgentIds]),
+  );
 
   return (
     <>
@@ -131,9 +136,11 @@ export function ToolOverlay({
         const isSelected = selectedId === id;
         const isHovered = hoveredId === id;
         const isSub = ch.isSubagent;
+        const role = roleDefinitions.find((definition) => getRoleAgentId(definition.id) === id);
+        const isRoleAgent = !!role;
 
         // Only show for hovered or selected agents (unless always-show is on)
-        if (!alwaysShowOverlay && !isSelected && !isHovered) return null;
+        if (!isRoleAgent && !alwaysShowOverlay && !isSelected && !isHovered) return null;
 
         // Position above character
         const sittingOffset =
@@ -171,6 +178,8 @@ export function ToolOverlay({
           // Idle, waiting on the user -> dedicated label. A finished turn (Stop)
           // shows only the checkmark and falls through to the normal idle text.
           activityText = WAITING_INPUT_ACTIVITY_TEXT;
+        } else if (isRoleAgent) {
+          activityText = role.name;
         } else if (!isSub && agentAwaitingInput[id]) {
           activityText = WAITING_INPUT_ACTIVITY_TEXT;
         } else if (isSub) {
@@ -209,7 +218,7 @@ export function ToolOverlay({
         const teamRoleLabel = ch.isTeamLead ? 'LEAD' : ch.agentName || null;
         const totalTokens = ch.inputTokens + ch.outputTokens;
         const tokenRatio = totalTokens / MAX_CONTEXT_TOKENS;
-        const hasExtraLines = !!(ch.folderName || teamRoleLabel);
+        const hasExtraLines = !!((ch.folderName && !isRoleAgent) || teamRoleLabel);
 
         return (
           <div
@@ -254,13 +263,13 @@ export function ToolOverlay({
                 >
                   {activityText}
                 </span>
-                {ch.folderName && (
+                {ch.folderName && !isRoleAgent && (
                   <span className="text-2xs leading-none overflow-hidden text-ellipsis block">
                     {ch.folderName}
                   </span>
                 )}
               </div>
-              {isSelected && !isSub && (
+              {isSelected && !isSub && !isRoleAgent && (
                 <Button
                   variant="ghost"
                   size="icon"

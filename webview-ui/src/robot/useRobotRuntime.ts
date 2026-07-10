@@ -84,6 +84,7 @@ export function useRobotRuntime({ getOfficeState }: RobotRuntimeOptions): RobotR
       content: string,
       status: RoleTaskConsoleEntry['status'] = 'running',
       stream: RoleTaskConsoleEntry['stream'] = 'system',
+      roleId = 'robot',
     ) => {
       setEntries((prev) =>
         [
@@ -91,7 +92,7 @@ export function useRobotRuntime({ getOfficeState }: RobotRuntimeOptions): RobotR
           {
             id: ++entryIdRef.current,
             runId: activePlanIdRef.current ?? 'robot-runtime',
-            roleId: 'robot',
+            roleId,
             status,
             stream,
             content,
@@ -118,7 +119,6 @@ export function useRobotRuntime({ getOfficeState }: RobotRuntimeOptions): RobotR
       .then((nextTools) => {
         if (!disposed && nextTools) {
           setTools(nextTools);
-          appendEntry(`Robot registry loaded: ${nextTools.length} tools.`, 'done');
         }
       })
       .catch((error: Error) => {
@@ -194,7 +194,7 @@ export function useRobotRuntime({ getOfficeState }: RobotRuntimeOptions): RobotR
 
       const intent = parseRobotIntent(content);
       if (!intent) return false;
-      appendEntry(`Console intent: ${content}`, 'running');
+      appendEntry(content, 'done', 'system', 'user');
       void preparePlan(intent)
         .then(({ plan, validation }) => {
           if (!validation.ok) {

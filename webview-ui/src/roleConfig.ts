@@ -1,6 +1,7 @@
 export type RoleConfigMode = 'simple' | 'markdown';
 
 export type RoleId =
+  | 'coordinator'
   | 'weather'
   | 'dresser'
   | 'travel'
@@ -140,6 +141,14 @@ const GENERIC_ROLE_PROFILES: Record<
     defaultInclude: string;
   }
 > = {
+  coordinator: {
+    heading: '角色调度员任务',
+    persona: '你是桌面机器人的角色调度员，负责理解用户意图，判断该找哪个角色，必要时拆成多步协作。',
+    cardName: '调度建议',
+    defaultTopic: '用户在 console 中输入请求，需要决定由哪个角色处理',
+    defaultStyle: '自然、直接、像值班管家一样沟通',
+    defaultInclude: '意图判断、推荐角色、执行顺序、需要用户补充的信息',
+  },
   navigator: {
     heading: '领航员任务',
     persona: '你是桌面机器人的领航员，负责读取地图记忆、POI 和视觉事实，规划底盘路线。',
@@ -370,6 +379,7 @@ export function createDefaultRoleConfig(roleId: RoleId | string): RoleRuntimeCon
     case 'captain':
       return createRoleConfig('captain', { roleId: 'captain', captain: defaultCaptainRoleConfig });
     case 'navigator':
+    case 'coordinator':
     case 'encyclopedia':
     case 'calculator':
     case 'translator':

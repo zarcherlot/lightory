@@ -4,11 +4,7 @@ import { toMajorMinor } from './changelogData.js';
 import { ChangelogModal } from './components/ChangelogModal.js';
 import { DebugView } from './components/DebugView.js';
 import { EditActionBar } from './components/EditActionBar.js';
-import {
-  type EducationConnection,
-  EducationModeOverlay,
-  type EducationRunStatus,
-} from './components/EducationModeOverlay.js';
+import type { EducationConnection, EducationRunStatus } from './components/EducationModeOverlay.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
 import { RoleConfigModal } from './components/RoleConfigModal.js';
 import { RoleTaskConsole } from './components/RoleTaskConsole.js';
@@ -51,6 +47,7 @@ interface RoleTaskInputCard {
 }
 
 const ROBOT_ROLE_STAGE_ORDER = [
+  'coordinator',
   'storyteller',
   'checker',
   'weather',
@@ -60,6 +57,70 @@ const ROBOT_ROLE_STAGE_ORDER = [
   'captain',
   'poster',
 ];
+
+const ROLE_MENTION_ALIASES: Record<string, string> = {
+  coordinator: 'coordinator',
+  角色调度员: 'coordinator',
+  调度员: 'coordinator',
+  管家: 'coordinator',
+  分发: 'coordinator',
+  weather: 'weather',
+  家庭记忆员: 'weather',
+  记忆员: 'weather',
+  记忆: 'weather',
+  storyteller: 'storyteller',
+  任务规划员: 'storyteller',
+  规划员: 'storyteller',
+  规划: 'storyteller',
+  checker: 'checker',
+  安全监督员: 'checker',
+  安全员: 'checker',
+  安全: 'checker',
+  travel: 'travel',
+  底盘驾驶员: 'travel',
+  底盘: 'travel',
+  驾驶员: 'travel',
+  驾驶: 'travel',
+  dresser: 'dresser',
+  机械臂操作员: 'dresser',
+  机械臂: 'dresser',
+  操作员: 'dresser',
+  encyclopedia: 'encyclopedia',
+  视觉观察员: 'encyclopedia',
+  视觉: 'encyclopedia',
+  观察员: 'encyclopedia',
+  captain: 'captain',
+  语音播报员: 'captain',
+  播报员: 'captain',
+  播报: 'captain',
+  poster: 'poster',
+  led: 'poster',
+  LED: 'poster',
+  LED表情员: 'poster',
+  表情员: 'poster',
+  表情: 'poster',
+};
+
+interface RoleMentionInput {
+  roleId: string;
+  content: string;
+}
+
+function parseRoleMentionInput(input: string): RoleMentionInput | null {
+  const match = input.trim().match(/^@([^\s:：,，]+)\s*[:：,，]?\s*(.+)$/u);
+  if (!match) return null;
+  const rawMention = match[1];
+  const content = match[2]?.trim() ?? '';
+  if (!content) return null;
+
+  const role =
+    roleDefinitions.find((definition) => definition.id === rawMention) ??
+    roleDefinitions.find((definition) => definition.name === rawMention);
+  const roleId =
+    role?.id ?? ROLE_MENTION_ALIASES[rawMention] ?? ROLE_MENTION_ALIASES[rawMention.toLowerCase()];
+  if (!roleId || !getRoleDefinition(roleId)) return null;
+  return { roleId, content };
+}
 
 // Test-only observability hooks (message/sound logs, addAgent wrapper, selectAgent).
 // Installed only under the e2e harness so they never patch prototypes or grow
@@ -347,7 +408,11 @@ function App() {
   );
 
   const startRoleTask = useCallback(
-    (roleId: string) => {
+    (
+      roleId: string,
+      inputCards: RoleTaskInputCard[] = getRoleInputCards(roleId),
+      options: { useRuntimeOverride?: boolean } = { useRuntimeOverride: true },
+    ) => {
       const os = getOfficeState();
       const roleConfig = roleConfigsRef.current[roleId];
       roleAttemptCountsRef.current.set(roleId, (roleAttemptCountsRef.current.get(roleId) ?? 0) + 1);
@@ -359,15 +424,40 @@ function App() {
         roleId,
         col: ch?.tileCol ?? 0,
         row: ch?.tileRow ?? 0,
-        inputCards: getRoleInputCards(roleId),
-        taskOverride: roleConfig?.markdown.trim()
-          ? {
-              markdown: roleConfig.markdown,
-            }
-          : undefined,
+        inputCards,
+        taskOverride:
+          options.useRuntimeOverride && roleConfig?.markdown.trim()
+            ? {
+                markdown: roleConfig.markdown,
+              }
+            : undefined,
       });
     },
     [getRoleInputCards],
+  );
+
+  const startConsoleRoleChat = useCallback(
+    ({ roleId, content }: RoleMentionInput) => {
+      const role = getRoleDefinition(roleId);
+      if (!role) return false;
+      addRobotRolesToScene([roleId]);
+      transport.send({ type: 'consoleUserInput', content: `@${role.name} ${content}` });
+      window.setTimeout(() => {
+        startRoleTask(
+          roleId,
+          [
+            {
+              sourceRoleId: 'user',
+              card: 'console input',
+              content,
+            },
+          ],
+          { useRuntimeOverride: false },
+        );
+      }, 0);
+      return true;
+    },
+    [addRobotRolesToScene, startRoleTask],
   );
 
   const clearRoleTaskVisuals = useCallback((roleIds: Iterable<string>) => {
@@ -519,9 +609,18 @@ function App() {
   );
 
   const officeState = getOfficeState();
+  const sceneRoleOptions = roleDefinitions
+    .filter((role) => activeRoleIds.has(role.id))
+    .map((role) => ({ id: role.id, name: role.name }));
 
   // Force dependency on editorTickForKeyboard to propagate keyboard-triggered re-renders
   void editorTickForKeyboard;
+  void handleRunTeam;
+  void handlePauseRun;
+  void handleResumeRun;
+  void handleStopRun;
+  void handleBackToEdit;
+  void handleConfigureRole;
 
   // Show "Press R to rotate" hint when a rotatable item is selected or being placed
   const showRotateHint =
@@ -633,24 +732,6 @@ function App() {
             alwaysShowOverlay={alwaysShowOverlay}
           />
 
-          {showRoleVisualizer && (
-            <EducationModeOverlay
-              officeState={officeState}
-              activeRoleIds={activeRoleIds}
-              isEditMode={editor.isEditMode}
-              runStatus={educationRunStatus}
-              containerRef={containerRef}
-              zoom={editor.zoom}
-              panRef={editor.panRef}
-              onConfigureRole={handleConfigureRole}
-              onRunTeam={handleRunTeam}
-              onPauseRun={handlePauseRun}
-              onResumeRun={handleResumeRun}
-              onStopRun={handleStopRun}
-              onBackToEdit={handleBackToEdit}
-            />
-          )}
-
           <RoleConfigModal
             roleId={configRoleId}
             config={configRoleId ? roleConfigs[configRoleId] : undefined}
@@ -731,6 +812,7 @@ function App() {
 
       <RoleTaskConsole
         entries={[...roleTaskConsoleEntries, ...robotRuntime.entries]}
+        roleOptions={sceneRoleOptions}
         isSettingsOpen={isSettingsOpen}
         robotConnected={robotRuntime.connected}
         robotStatusText={robotRuntime.statusText}
@@ -738,6 +820,8 @@ function App() {
         hasPendingRobotConfirmation={robotRuntime.pendingConfirmation !== null}
         onToggleSettings={() => setIsSettingsOpen((v) => !v)}
         onSubmitInput={(content) => {
+          const roleMention = parseRoleMentionInput(content);
+          if (roleMention) return startConsoleRoleChat(roleMention);
           const intent = parseRobotIntent(content);
           visualizeRobotIntent(intent);
           return robotRuntime.handleConsoleInput(content);

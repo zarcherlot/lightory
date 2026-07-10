@@ -9,6 +9,7 @@ import type { RoleTaskInputCard, RoleTaskOverride } from './clientMessageHandler
 type WsSend = (message: Record<string, unknown>) => void;
 
 const ROLE_TASK_FILES: Record<string, string> = {
+  coordinator: 'coordinator.md',
   weather: 'weather.md',
   dresser: 'dresser.md',
   travel: 'travel.md',
@@ -26,6 +27,7 @@ const ROLE_TASK_FILES: Record<string, string> = {
 const ROLE_TASK_TIMEOUT_MS = 120_000;
 const WEATHER_LOOKUP_TIMEOUT_MS = 6_000;
 const CODEX_ROLE_TASK_ENV = {
+  bin: 'LIGHTORY_CODEX_BIN',
   modelProvider: 'LIGHTORY_CODEX_MODEL_PROVIDER',
   model: 'LIGHTORY_CODEX_MODEL',
   reasoningEffort: 'LIGHTORY_CODEX_REASONING_EFFORT',
@@ -214,11 +216,14 @@ function buildRoleTaskPrompt(
   inputCards: RoleTaskInputCard[],
 ): string {
   return [
-    `Execute this ${roleId} role task using only the task text below.`,
+    `You are running the ${roleId} role in a desktop robot console.`,
     '',
+    'Stay in character and speak directly to the user in natural Chinese.',
+    'If the user is chatting, reply conversationally as this role, not like a generic chatbot.',
+    'If the user gives a robot operation request, follow the role instructions and produce the role-specific plan, decision, or handoff.',
+    'Do not claim the robot has executed a physical action unless an execution result is present in the inputs.',
     'Do not read local files. Do not list directories. Do not run shell commands.',
-    'If the task needs current weather, use built-in web search only.',
-    'Return only the final child-friendly card or checklist text.',
+    'Return only the role response that should appear in the console.',
     '',
     formatInputCards(inputCards),
     '',
@@ -442,9 +447,10 @@ function buildRoleTaskCommand(
     case 'claude':
       return { command: 'claude', args: [prompt] };
     case 'codex':
+      const codexCommand = process.env[CODEX_ROLE_TASK_ENV.bin] ?? 'codex';
       const outputPath = path.join(os.tmpdir(), `lightory-${runId}-last-message.txt`);
       return {
-        command: 'codex',
+        command: codexCommand,
         args: [
           'exec',
           ...buildCodexRoleTaskIsolationArgs(),
@@ -467,6 +473,7 @@ function buildRoleTaskCommand(
         }),
         input: prompt,
         outputPath,
+        displayCommand: codexCommand,
       };
     case 'opencode':
       const opencodeCommand = process.env['LIGHTORY_OPENCODE_BIN'] ?? 'opencode';

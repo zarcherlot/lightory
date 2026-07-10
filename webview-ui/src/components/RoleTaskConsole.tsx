@@ -12,8 +12,14 @@ export interface RoleTaskConsoleEntry {
   content: string;
 }
 
+export interface ConsoleRoleOption {
+  id: string;
+  name: string;
+}
+
 interface RoleTaskConsoleProps {
   entries: RoleTaskConsoleEntry[];
+  roleOptions?: ConsoleRoleOption[];
   isSettingsOpen: boolean;
   robotConnected?: boolean;
   robotStatusText?: string;
@@ -28,6 +34,7 @@ interface RoleTaskConsoleProps {
 
 export function RoleTaskConsole({
   entries,
+  roleOptions = [],
   isSettingsOpen,
   robotConnected = false,
   robotStatusText = 'Robot disconnected',
@@ -41,6 +48,14 @@ export function RoleTaskConsole({
 }: RoleTaskConsoleProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState('');
+  const mentionQuery = getMentionQuery(draft);
+  const mentionOptions =
+    mentionQuery === null
+      ? []
+      : roleOptions.filter((role) =>
+          `${role.name} ${role.id}`.toLowerCase().includes(mentionQuery.toLowerCase()),
+        );
+  const showMentionList = mentionQuery !== null && mentionOptions.length > 0;
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -55,6 +70,10 @@ export function RoleTaskConsole({
     const handled = onSubmitInput?.(content) ?? false;
     if (!handled) transport.send({ type: 'consoleUserInput', content });
     setDraft('');
+  };
+
+  const selectMention = (role: ConsoleRoleOption) => {
+    setDraft((value) => replaceMentionQuery(value, role.name));
   };
 
   return (
@@ -92,26 +111,13 @@ export function RoleTaskConsole({
           </button>
         </div>
       </div>
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-12 py-8 text-2xs leading-tight">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-12 py-10 text-2xs leading-tight">
         {entries.length === 0 ? (
           <div className="text-text-muted">
             输入环境信息或控制命令，例如：这里是主卧、去主卧、说你好。
           </div>
         ) : (
-          entries.map((entry) => (
-            <pre
-              key={entry.id}
-              className={`m-0 whitespace-pre-wrap break-words ${
-                entry.stream === 'stderr'
-                  ? 'text-status-error'
-                  : entry.stream === 'system'
-                    ? 'text-status-success'
-                    : 'text-text'
-              }`}
-            >
-              {getRoleSpeakerName(entry.roleId)}：{formatConsoleContent(entry.content)}
-            </pre>
-          ))
+          entries.map((entry) => <ConsoleMessage key={entry.id} entry={entry} />)
         )}
       </div>
       {hasPendingRobotConfirmation && (
@@ -134,12 +140,29 @@ export function RoleTaskConsole({
         </div>
       )}
       <form
-        className="border-t-2 border-border bg-bg px-8 py-8 flex gap-6"
+        className="relative border-t-2 border-border bg-bg px-8 py-8 flex gap-6"
         onSubmit={(event) => {
           event.preventDefault();
           sendInput();
         }}
       >
+        {showMentionList && (
+          <div className="absolute left-8 right-70 bottom-full mb-6 max-h-180 overflow-y-auto border-2 border-border bg-bg-dark shadow-pixel z-10">
+            {mentionOptions.map((role) => (
+              <button
+                key={role.id}
+                type="button"
+                className="block w-full px-8 py-6 text-left text-xs text-text hover:bg-btn-hover focus:bg-btn-hover outline-none"
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  selectMention(role);
+                }}
+              >
+                @{role.name}
+              </button>
+            ))}
+          </div>
+        )}
         <input
           className="min-w-0 flex-1 bg-bg-dark border-2 border-border px-8 py-6 text-xs text-text outline-none focus:border-accent"
           value={draft}
@@ -160,11 +183,56 @@ export function RoleTaskConsole({
   );
 }
 
+function getMentionQuery(value: string): string | null {
+  const match = value.match(/(?:^|\s)@([^\s@]*)$/u);
+  return match?.[1] ?? null;
+}
+
+function replaceMentionQuery(value: string, roleName: string): string {
+  return value.replace(/(^|\s)@([^\s@]*)$/u, `$1@${roleName} `);
+}
+
+function ConsoleMessage({ entry }: { entry: RoleTaskConsoleEntry }) {
+  const isUser = entry.roleId === 'user';
+  const speaker = getRoleSpeakerName(entry.roleId);
+
+  return (
+    <div className={`mb-8 flex w-full ${isUser ? 'justify-end' : 'justify-start'}`}>
+      <div className={`flex max-w-[82%] flex-col gap-3 ${isUser ? 'items-end' : 'items-start'}`}>
+        {!isUser && (
+          <div
+            className={`px-2 text-[13px] leading-none ${
+              entry.stream === 'stderr' ? 'text-status-error' : 'text-text-muted'
+            }`}
+          >
+            {speaker}
+          </div>
+        )}
+        <pre
+          className={`m-0 max-w-full whitespace-pre-wrap break-words border-2 px-10 py-7 text-2xs leading-snug shadow-pixel ${
+            isUser
+              ? 'rounded-tl-[10px] rounded-tr-[2px] rounded-bl-[10px] rounded-br-[10px] border-accent bg-accent text-white'
+              : entry.stream === 'stderr'
+                ? 'rounded-tl-[2px] rounded-tr-[10px] rounded-bl-[10px] rounded-br-[10px] border-danger bg-bg text-status-error'
+                : 'rounded-tl-[2px] rounded-tr-[10px] rounded-bl-[10px] rounded-br-[10px] border-border bg-bg text-text'
+          }`}
+        >
+          {formatConsoleContent(entry.content)}
+        </pre>
+      </div>
+    </div>
+  );
+}
+
 function getRoleSpeakerName(roleId: string): string {
-  if (roleId === 'user') return 'Console';
+  if (roleId === 'user') return 'User';
   return getRoleDefinition(roleId)?.name ?? roleId;
 }
 
 function formatConsoleContent(content: string): string {
-  return content.replace(/^\s*(?:[^：:\n]{1,16}卡|趣味广播)[：:]\s*/u, '');
+  return content
+    .replace(/^\s*用户输入[:：]\s*/u, '')
+    .replace(/^\s*Console intent[:：]\s*/u, '')
+    .replace(/^\s*(?:[^：:\n]{1,16}卡|趣味广播)[：:]\s*/u, '')
+    .trim();
 }
