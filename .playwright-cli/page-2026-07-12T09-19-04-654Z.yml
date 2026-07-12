@@ -1,0 +1,39 @@
+- generic [ref=f1e3]:
+  - generic [ref=f1e6]:
+    - button "Zoom in (Ctrl+Scroll)" [ref=f1e7] [cursor=pointer]
+    - button "Zoom out (Ctrl+Scroll)" [ref=f1e9] [cursor=pointer]
+  - generic [ref=f1e12]:
+    - button "Furniture" [ref=f1e13] [cursor=pointer]
+    - button "Floor" [ref=f1e14] [cursor=pointer]
+    - button "Wall" [ref=f1e15] [cursor=pointer]
+    - button "Erase" [ref=f1e16] [cursor=pointer]
+    - button "Pets" [ref=f1e17] [cursor=pointer]
+  - generic: 角色调度员
+  - generic: 任务规划员
+  - generic: 安全监督员
+  - generic: 家庭记忆员
+  - generic: 底盘驾驶员
+  - generic: 机械臂操作员
+  - generic: 视觉观察员
+  - generic: 语音播报员
+  - generic: LED 表情员
+  - generic [ref=f1e18]:
+    - generic [ref=f1e19]:
+      - generic [ref=f1e20]: Console
+      - generic [ref=f1e21]:
+        - generic [ref=f1e22]: mentorpi-192-168-1-6 robot-api-0.1.0
+        - button "Emergency stop" [ref=f1e23] [cursor=pointer]: 急停
+        - button "Settings" [ref=f1e24] [cursor=pointer]: ⚙
+    - generic [ref=f1e26]:
+      - generic [ref=f1e37]: 让小车前进2m
+      - generic [ref=f1e41]:
+        - generic [ref=f1e42]: robot
+        - generic [ref=f1e43]: "Build robot-plan/v1 plan_drive_distance_前进2米_mrhl0asl: 前进2米"
+      - generic [ref=f1e45]:
+        - generic [ref=f1e46]: robot
+        - generic [ref=f1e47]: "Robot plan failed: Robot API is offline."
+    - generic [ref=f1e28]:
+      - textbox "Console user input" [active] [ref=f1e29]:
+        - /placeholder: 用户输入 / 环境声明 / 确认回复
+      - button "发送" [disabled] [ref=f1e30]
+  - generic [ref=f1e36] [cursor=pointer]: v1.3

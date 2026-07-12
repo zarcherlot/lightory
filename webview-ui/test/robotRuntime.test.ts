@@ -9,7 +9,12 @@ import {
   MockRobotApiClient,
   MockRobotEventBus,
 } from '../src/robot/mockRobotApi.js';
-import { buildMoveToPoiPlan, buildRememberPoiPlan } from '../src/robot/robotPlanBuilder.js';
+import {
+  buildDriveDistancePlan,
+  buildMoveToPoiPlan,
+  buildRememberPoiPlan,
+  parseRobotIntent,
+} from '../src/robot/robotPlanBuilder.js';
 import { validateRobotPlanLocally } from '../src/robot/robotPlanSchema.js';
 import type { RobotApiEnvelope, RobotEvent } from '../src/robot/types.js';
 import { HttpVideoStreamClient, MockVideoStreamClient } from '../src/robot/videoStreamClient.js';
@@ -52,6 +57,35 @@ test('local validation requires confirmation for high-risk movement', () => {
     validation.errors.some((error) => error.code === 'confirmation_required'),
     true,
   );
+});
+
+test('parses distance, rotation, and velocity profile robot intents', () => {
+  assert.deepEqual(parseRobotIntent('让小车前进2m'), {
+    type: 'driveDistance',
+    distanceMeters: 2,
+  });
+  assert.deepEqual(parseRobotIntent('让小车旋转1圈'), {
+    type: 'rotateAngle',
+    angleRad: Math.PI * 2,
+  });
+
+  const backward = parseRobotIntent('控制小车加点速度后退1s');
+  assert.equal(backward?.type, 'velocityProfile');
+  assert.equal(
+    backward?.type === 'velocityProfile'
+      ? backward.segments.reduce((sum, segment) => sum + segment.durationMs, 0)
+      : 0,
+    1000,
+  );
+
+  const figureEight = parseRobotIntent('让小车画个八字');
+  assert.equal(figureEight?.type, 'velocityProfile');
+  assert.equal(figureEight?.type === 'velocityProfile' ? figureEight.segments.length : 0, 2);
+});
+
+test('builds header-safe plan ids for Chinese intents', () => {
+  const plan = buildDriveDistancePlan(ctx, 2);
+  assert.match(plan.planId, /^[a-z0-9_-]+$/);
 });
 
 test('mock robot emits step and done events while executing a plan', async () => {

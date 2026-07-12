@@ -65,14 +65,18 @@ export function validateRobotPlanLocally(
         stepId: step.id,
       });
     }
-    if (riskRank[tool.risk] > riskRank[plan.risk]) {
+    if (!isAlwaysAllowedStopTool(step.tool) && riskRank[tool.risk] > riskRank[plan.risk]) {
       errors.push({
         code: 'risk_mismatch',
         message: `Tool ${step.tool} risk exceeds plan risk.`,
         stepId: step.id,
       });
     }
-    if ((tool.risk === 'high' || tool.risk === 'critical') && !plan.requiresUserConfirmation) {
+    if (
+      !isAlwaysAllowedStopTool(step.tool) &&
+      (tool.risk === 'high' || tool.risk === 'critical') &&
+      !plan.requiresUserConfirmation
+    ) {
       errors.push({
         code: 'confirmation_required',
         message: `Tool ${step.tool} requires user confirmation.`,
@@ -118,6 +122,10 @@ export function validateRobotPlanLocally(
     errors,
     warnings,
   };
+}
+
+function isAlwaysAllowedStopTool(toolName: string): boolean {
+  return toolName === 'base.stop' || toolName === 'arm.stop';
 }
 
 function hasCycle(plan: RobotPlan): boolean {

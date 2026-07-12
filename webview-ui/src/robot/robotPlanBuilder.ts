@@ -9,7 +9,7 @@ const slugify = (value: string) =>
   value
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9\u4e00-\u9fa5]+/gu, '-')
+    .replace(/[^a-z0-9]+/gu, '-')
     .replace(/^-|-$/g, '')
     .slice(0, 36) || 'plan';
 
@@ -132,14 +132,139 @@ export function buildLedPlan(ctx: BuildContext, mode: string): RobotPlan {
   );
 }
 
+export function buildDriveDistancePlan(ctx: BuildContext, distanceMeters: number): RobotPlan {
+  const direction = distanceMeters >= 0 ? '前进' : '后退';
+  const absDistance = Math.abs(distanceMeters);
+  return createPlan(
+    ctx,
+    'plan_drive_distance',
+    `${direction}${absDistance}米`,
+    'high',
+    true,
+    [
+      {
+        id: 's1',
+        tool: 'base.driveDistance',
+        args: { distanceMeters, maxSpeedMps: 0.2 },
+        timeoutMs: 15000,
+        safety: { requiresLease: 'base', stopOnObstacle: true, maxSpeedMps: 0.2 },
+      },
+      { id: 's2', tool: 'base.stop', dependsOn: ['s1'], args: {} },
+    ],
+    16000,
+    ['小车已架空或处于安全测试环境', '移动距离由机器人里程计估算'],
+  );
+}
+
+export function buildRotateAnglePlan(ctx: BuildContext, angleRad: number): RobotPlan {
+  return createPlan(
+    ctx,
+    'plan_rotate_angle',
+    `旋转${formatTurns(angleRad)}`,
+    'high',
+    true,
+    [
+      {
+        id: 's1',
+        tool: 'base.rotateAngle',
+        args: { angleRad, maxAngularRadps: 0.8 },
+        timeoutMs: 15000,
+        safety: { requiresLease: 'base', stopOnObstacle: true },
+      },
+      { id: 's2', tool: 'base.stop', dependsOn: ['s1'], args: {} },
+    ],
+    16000,
+    ['小车已架空或处于安全测试环境', '旋转角度由机器人里程计估算'],
+  );
+}
+
+export function buildVelocityProfilePlan(
+  ctx: BuildContext,
+  intent: string,
+  segments: Array<{ linearX: number; angularZ: number; durationMs: number }>,
+): RobotPlan {
+  return createPlan(
+    ctx,
+    'plan_velocity_profile',
+    intent,
+    'high',
+    true,
+    [
+      {
+        id: 's1',
+        tool: 'base.velocityProfile',
+        args: { segments },
+        timeoutMs: 20000,
+        safety: { requiresLease: 'base', stopOnObstacle: true, maxSpeedMps: 0.2 },
+      },
+      { id: 's2', tool: 'base.stop', dependsOn: ['s1'], args: {} },
+    ],
+    21000,
+    ['小车已架空或处于安全测试环境', '速度曲线由小车侧 watchdog 限时执行'],
+  );
+}
+
 export type RobotIntent =
   | { type: 'rememberPoi'; poiName: string }
   | { type: 'moveToPoi'; poiName: string }
   | { type: 'speech'; text: string }
-  | { type: 'led'; mode: string };
+  | { type: 'led'; mode: string }
+  | { type: 'driveDistance'; distanceMeters: number }
+  | { type: 'rotateAngle'; angleRad: number }
+  | {
+      type: 'velocityProfile';
+      intent: string;
+      segments: Array<{ linearX: number; angularZ: number; durationMs: number }>;
+    };
 
 export function parseRobotIntent(input: string): RobotIntent | null {
   const text = input.trim();
+  const normalized = text.replace(/\s+/gu, '');
+
+  if (/八字|8字/u.test(normalized)) {
+    return {
+      type: 'velocityProfile',
+      intent: '画八字',
+      segments: [
+        { linearX: 0.15, angularZ: 0.7, durationMs: 4500 },
+        { linearX: 0.15, angularZ: -0.7, durationMs: 4500 },
+      ],
+    };
+  }
+
+  const backwardDuration = normalized.match(/(?:后退|倒车).*?([0-9]+(?:\.[0-9]+)?)(?:s|秒)/u);
+  if (backwardDuration?.[1]) {
+    const durationMs = Math.round(Number(backwardDuration[1]) * 1000);
+    if (Number.isFinite(durationMs) && durationMs > 0) {
+      return {
+        type: 'velocityProfile',
+        intent: `加速后退${backwardDuration[1]}秒`,
+        segments: buildBackwardRampSegments(durationMs),
+      };
+    }
+  }
+
+  const driveDistance = normalized.match(/(?:前进|向前|往前|后退|倒车)([0-9]+(?:\.[0-9]+)?)(?:m|米)/u);
+  if (driveDistance?.[1]) {
+    const distance = Number(driveDistance[1]);
+    if (Number.isFinite(distance)) {
+      const sign = /后退|倒车/u.test(normalized) ? -1 : 1;
+      return { type: 'driveDistance', distanceMeters: sign * distance };
+    }
+  }
+
+  const fullTurns = normalized.match(/(?:旋转|转)([0-9]+(?:\.[0-9]+)?)?圈/u);
+  if (fullTurns) {
+    const turns = fullTurns[1] ? Number(fullTurns[1]) : 1;
+    if (Number.isFinite(turns)) return { type: 'rotateAngle', angleRad: turns * Math.PI * 2 };
+  }
+
+  const degrees = normalized.match(/(?:旋转|转)(-?[0-9]+(?:\.[0-9]+)?)(?:度|°)/u);
+  if (degrees?.[1]) {
+    const angle = (Number(degrees[1]) * Math.PI) / 180;
+    if (Number.isFinite(angle)) return { type: 'rotateAngle', angleRad: angle };
+  }
+
   const remember = text.match(/^这里是(.+)$/u) ?? text.match(/^这是(.+)$/u);
   if (remember?.[1]) return { type: 'rememberPoi', poiName: remember[1].trim() };
 
@@ -159,5 +284,27 @@ export function buildPlanForIntent(ctx: BuildContext, intent: RobotIntent): Robo
   if (intent.type === 'rememberPoi') return buildRememberPoiPlan(ctx, intent.poiName);
   if (intent.type === 'moveToPoi') return buildMoveToPoiPlan(ctx, intent.poiName);
   if (intent.type === 'speech') return buildSpeechPlan(ctx, intent.text);
-  return buildLedPlan(ctx, intent.mode);
+  if (intent.type === 'led') return buildLedPlan(ctx, intent.mode);
+  if (intent.type === 'driveDistance') return buildDriveDistancePlan(ctx, intent.distanceMeters);
+  if (intent.type === 'rotateAngle') return buildRotateAnglePlan(ctx, intent.angleRad);
+  return buildVelocityProfilePlan(ctx, intent.intent, intent.segments);
+}
+
+function buildBackwardRampSegments(
+  durationMs: number,
+): Array<{ linearX: number; angularZ: number; durationMs: number }> {
+  const clamped = Math.min(Math.max(durationMs, 250), 2000);
+  const count = Math.min(4, Math.max(1, Math.ceil(clamped / 250)));
+  const segmentMs = Math.floor(clamped / count);
+  return Array.from({ length: count }, (_, index) => ({
+    linearX: -0.05 * (index + 1),
+    angularZ: 0,
+    durationMs: index === count - 1 ? clamped - segmentMs * (count - 1) : segmentMs,
+  }));
+}
+
+function formatTurns(angleRad: number): string {
+  const turns = angleRad / (Math.PI * 2);
+  if (Math.abs(Math.abs(turns) - 1) < 0.001) return '1圈';
+  return `${turns.toFixed(2)}圈`;
 }

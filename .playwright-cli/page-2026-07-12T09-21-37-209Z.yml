@@ -1,0 +1,37 @@
+- generic [ref=f4e3]:
+  - generic [ref=f4e6]:
+    - button "Zoom in (Ctrl+Scroll)" [ref=f4e7] [cursor=pointer]
+    - button "Zoom out (Ctrl+Scroll)" [ref=f4e9] [cursor=pointer]
+  - generic [ref=f4e12]:
+    - button "Furniture" [ref=f4e13] [cursor=pointer]
+    - button "Floor" [ref=f4e14] [cursor=pointer]
+    - button "Wall" [ref=f4e15] [cursor=pointer]
+    - button "Erase" [ref=f4e16] [cursor=pointer]
+    - button "Pets" [ref=f4e17] [cursor=pointer]
+  - generic: 角色调度员
+  - generic: 任务规划员
+  - generic: 安全监督员
+  - generic: 家庭记忆员
+  - generic: 底盘驾驶员
+  - generic: 机械臂操作员
+  - generic: 视觉观察员
+  - generic: 语音播报员
+  - generic: LED 表情员
+  - generic [ref=f4e18]:
+    - generic [ref=f4e19]:
+      - generic [ref=f4e20]: Console
+      - generic [ref=f4e21]:
+        - generic [ref=f4e22]: mentorpi-192-168-1-6 robot-api-0.1.0
+        - button "Emergency stop" [ref=f4e23] [cursor=pointer]: 急停
+        - button "Settings" [ref=f4e24] [cursor=pointer]: ⚙
+    - generic [ref=f4e26]: 输入环境信息或控制命令，例如：这里是主卧、去主卧、说你好。
+    - generic [ref=f4e28]:
+      - textbox "Console user input" [ref=f4e29]:
+        - /placeholder: 用户输入 / 环境声明 / 确认回复
+      - button "发送" [disabled] [ref=f4e30]
+  - generic [ref=f4e31] [cursor=pointer]:
+    - generic [ref=f4e32]:
+      - generic [ref=f4e33]: Updated to v1.3!
+      - button "x" [ref=f4e34]
+    - generic [ref=f4e35]: See what's new
+  - generic [ref=f4e36] [cursor=pointer]: v1.3
