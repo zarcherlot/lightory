@@ -1,3 +1,4 @@
+import { normalizeRobotHttpBaseUrl } from './robotBaseUrl.js';
 import type {
   PlanValidationResult,
   RobotApiClient,
@@ -98,7 +99,7 @@ export class HttpRobotApiClient implements RobotApiClient {
     idempotencyKey?: string,
   ): Promise<T> {
     const requestId = crypto.randomUUID();
-    const url = new URL(path, normalizeBaseUrl(this.config.baseUrl));
+    const url = new URL(path, normalizeRobotHttpBaseUrl(this.config.baseUrl));
     url.searchParams.set('requestId', requestId);
     if (idempotencyKey) url.searchParams.set('idempotencyKey', idempotencyKey);
 
@@ -150,12 +151,6 @@ export class HttpRobotApiClient implements RobotApiClient {
     }
     return envelope.data;
   }
-}
-
-function normalizeBaseUrl(baseUrl: string): string {
-  const trimmed = baseUrl.trim();
-  if (!trimmed) return window.location.origin;
-  return trimmed.endsWith('/') ? trimmed : `${trimmed}/`;
 }
 
 function classifyFailure(

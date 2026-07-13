@@ -29,6 +29,7 @@ import {
   copyHookScript,
   opencodeProvider,
 } from './providers/index.js';
+import { createRobotIntentPlanner } from './robotIntentPlanner.js';
 import { createRoleTaskRunner } from './roleTaskRunner.js';
 import { LightoryServer } from './server.js';
 
@@ -153,6 +154,10 @@ async function main(): Promise<void> {
       onStartRoleTask: createRoleTaskRunner({
         provider,
         rolesDir,
+        cwd: process.cwd(),
+      }),
+      onPlanRobotIntent: createRobotIntentPlanner({
+        provider,
         cwd: process.cwd(),
       }),
     });

@@ -1,4 +1,5 @@
 import { createRobotApiFailure } from './robotApiClient.js';
+import { normalizeRobotHttpBaseUrl } from './robotBaseUrl.js';
 import type { RobotApiEnvelope, RobotConnectionConfig, VideoStreamInfo } from './types.js';
 
 export interface VideoStreamClient {
@@ -41,7 +42,7 @@ export class HttpVideoStreamClient implements VideoStreamClient {
     idempotencyKey?: string,
   ): Promise<T> {
     const requestId = crypto.randomUUID();
-    const url = new URL(path, normalizeBaseUrl(this.config.baseUrl));
+    const url = new URL(path, normalizeRobotHttpBaseUrl(this.config.baseUrl));
     url.searchParams.set('requestId', requestId);
     if (idempotencyKey) url.searchParams.set('idempotencyKey', idempotencyKey);
 
@@ -121,10 +122,4 @@ export class MockVideoStreamClient implements VideoStreamClient {
   async getState(streamId: string): Promise<VideoStreamInfo | null> {
     return this.streams.get(streamId) ?? null;
   }
-}
-
-function normalizeBaseUrl(baseUrl: string): string {
-  const trimmed = baseUrl.trim();
-  if (!trimmed) return window.location.origin;
-  return trimmed.endsWith('/') ? trimmed : `${trimmed}/`;
 }

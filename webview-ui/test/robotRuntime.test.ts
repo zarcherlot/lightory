@@ -12,7 +12,9 @@ import {
 import {
   buildDriveDistancePlan,
   buildMoveToPoiPlan,
+  buildPlanForIntent,
   buildRememberPoiPlan,
+  normalizeRobotIntent,
   parseRobotIntent,
 } from '../src/robot/robotPlanBuilder.js';
 import { validateRobotPlanLocally } from '../src/robot/robotPlanSchema.js';
@@ -86,6 +88,118 @@ test('parses distance, rotation, and velocity profile robot intents', () => {
 test('builds header-safe plan ids for Chinese intents', () => {
   const plan = buildDriveDistancePlan(ctx, 2);
   assert.match(plan.planId, /^[a-z0-9_-]+$/);
+});
+
+test('normalizes model-planned robot intents and rejects unsafe values', () => {
+  assert.deepEqual(
+    normalizeRobotIntent({
+      type: 'velocityProfile',
+      intent: '前后摆动跳舞',
+      segments: [
+        { linearX: 0.15, angularZ: 0.4, durationMs: 700 },
+        { linearX: -0.15, angularZ: -0.4, durationMs: 700 },
+      ],
+    }),
+    {
+      type: 'planned',
+      intent: {
+        type: 'velocityProfile',
+        intent: '前后摆动跳舞',
+        segments: [
+          { linearX: 0.15, angularZ: 0.4, durationMs: 700 },
+          { linearX: -0.15, angularZ: -0.4, durationMs: 700 },
+        ],
+      },
+    },
+  );
+  const longDrive = normalizeRobotIntent({ type: 'driveDistance', distanceMeters: 3 });
+  assert.equal(longDrive.type, 'planned');
+  assert.deepEqual(
+    longDrive.type === 'planned' && longDrive.intent.type === 'sequence'
+      ? longDrive.intent.actions
+      : [],
+    [
+      { type: 'driveDistance', distanceMeters: 2, maxSpeedMps: 0.2 },
+      { type: 'driveDistance', distanceMeters: 1, maxSpeedMps: 0.2 },
+    ],
+  );
+  assert.deepEqual(normalizeRobotIntent({ type: 'unsupported', reason: '太危险' }), {
+    type: 'unsupported',
+    reason: '太危险',
+  });
+});
+
+test('normalizes compound movement into a multi-step sequence plan', () => {
+  const outcome = normalizeRobotIntent({
+    type: 'sequence',
+    intent: '前进2米、后退1米、旋转1圈',
+    confirmationMessage: '请确认周围安全后执行。',
+    actions: [
+      { type: 'driveDistance', distanceMeters: 2 },
+      { type: 'driveDistance', distanceMeters: -1 },
+      { type: 'rotateAngle', angleRad: Math.PI * 2 },
+    ],
+  });
+
+  assert.equal(outcome.type, 'planned');
+  assert.equal(outcome.type === 'planned' ? outcome.confirmationMessage : '', '请确认周围安全后执行。');
+  const intent = outcome.type === 'planned' ? outcome.intent : null;
+  assert.equal(intent?.type, 'sequence');
+  const plan = intent ? buildPlanForIntent(ctx, intent) : null;
+  assert.deepEqual(
+    plan?.steps.map((step) => step.tool),
+    [
+      'base.driveDistance',
+      'base.stop',
+      'base.driveDistance',
+      'base.stop',
+      'base.rotateAngle',
+      'base.stop',
+    ],
+  );
+  assert.equal(validateRobotPlanLocally(plan!, getMockRobotTools()).ok, true);
+  assert.equal(plan?.steps[0]?.args.maxSpeedMps, 0.2);
+  assert.equal(plan?.steps[4]?.args.maxAngularRadps, 0.349066);
+});
+
+test('splits long drive distances into safe sequence actions', () => {
+  const outcome = normalizeRobotIntent({
+    type: 'sequence',
+    intent: '前进3米、后退2米、旋转1圈',
+    actions: [
+      { type: 'driveDistance', distanceMeters: 3 },
+      { type: 'driveDistance', distanceMeters: -2 },
+      { type: 'rotateAngle', angleRad: Math.PI * 2 },
+    ],
+  });
+
+  assert.equal(outcome.type, 'planned');
+  const intent = outcome.type === 'planned' ? outcome.intent : null;
+  assert.equal(intent?.type, 'sequence');
+  assert.deepEqual(intent?.type === 'sequence' ? intent.actions : [], [
+    { type: 'driveDistance', distanceMeters: 2, maxSpeedMps: 0.2 },
+    { type: 'driveDistance', distanceMeters: 1, maxSpeedMps: 0.2 },
+    { type: 'driveDistance', distanceMeters: -2, maxSpeedMps: 0.2 },
+    { type: 'rotateAngle', angleRad: 6.283185, maxAngularRadps: 0.349066 },
+  ]);
+});
+
+test('normalizes requested movement speeds to configured limits', () => {
+  const outcome = normalizeRobotIntent({
+    type: 'sequence',
+    intent: '快速前进再快速转圈',
+    actions: [
+      { type: 'driveDistance', distanceMeters: 1, maxSpeedMps: 0.9 },
+      { type: 'rotateAngle', angleRad: Math.PI * 2, maxAngularRadps: 2 },
+    ],
+  });
+
+  assert.equal(outcome.type, 'planned');
+  const intent = outcome.type === 'planned' ? outcome.intent : null;
+  assert.deepEqual(intent?.type === 'sequence' ? intent.actions : [], [
+    { type: 'driveDistance', distanceMeters: 1, maxSpeedMps: 0.5 },
+    { type: 'rotateAngle', angleRad: 6.283185, maxAngularRadps: 0.785398 },
+  ]);
 });
 
 test('mock robot emits step and done events while executing a plan', async () => {

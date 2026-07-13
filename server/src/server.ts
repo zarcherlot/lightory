@@ -5,7 +5,11 @@ import * as path from 'path';
 
 import type { AgentRuntime } from './agentRuntime.js';
 import type { AgentStateStore } from './agentStateStore.js';
-import type { AssetCache, SetHooksEnabledSideEffect } from './clientMessageHandler.js';
+import type {
+  AssetCache,
+  PlanRobotIntentSideEffect,
+  SetHooksEnabledSideEffect,
+} from './clientMessageHandler.js';
 import type { StartRoleTaskSideEffect } from './clientMessageHandler.js';
 import { SERVER_JSON_DIR, SERVER_JSON_NAME } from './constants.js';
 import { getHomeDir } from './homeDir.js';
@@ -72,6 +76,7 @@ export class LightoryServer {
     assetCache?: AssetCache;
     onSetHooksEnabled?: SetHooksEnabledSideEffect;
     onStartRoleTask?: StartRoleTaskSideEffect;
+    onPlanRobotIntent?: PlanRobotIntentSideEffect;
   }): Promise<ServerConfig> {
     // Check if another instance already has a server running
     const existing = this.readServerJson();
@@ -100,6 +105,7 @@ export class LightoryServer {
       onHookEvent: (providerId, event) => this.callback?.(providerId, event),
       onSetHooksEnabled: options?.onSetHooksEnabled,
       onStartRoleTask: options?.onStartRoleTask,
+      onPlanRobotIntent: options?.onPlanRobotIntent,
     });
 
     this.app = app;

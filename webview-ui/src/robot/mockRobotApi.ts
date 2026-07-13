@@ -192,13 +192,61 @@ function tool(
     version: '1.0.0',
     category,
     description,
-    inputSchema: { type: 'object' },
+    inputSchema: inputSchemaForTool(name),
     outputSchema: { type: 'object' },
     risk,
     requiresConfirmation,
     requiresLease,
     timeoutMs,
   };
+}
+
+function inputSchemaForTool(name: RobotToolDefinition['name']): Record<string, unknown> {
+  if (name === 'base.driveDistance') {
+    return {
+      type: 'object',
+      required: ['distanceMeters'],
+      properties: {
+        distanceMeters: { type: 'number' },
+        maxSpeedMps: { type: 'number', default: 0.2, minimum: 0, maximum: 0.5 },
+      },
+      additionalProperties: false,
+    };
+  }
+  if (name === 'base.rotateAngle') {
+    return {
+      type: 'object',
+      required: ['angleRad'],
+      properties: {
+        angleRad: { type: 'number' },
+        maxAngularRadps: { type: 'number', default: 0.349066, minimum: 0, maximum: 0.785398 },
+      },
+      additionalProperties: false,
+    };
+  }
+  if (name === 'base.velocityProfile') {
+    return {
+      type: 'object',
+      required: ['segments'],
+      properties: {
+        segments: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['linearX', 'angularZ', 'durationMs'],
+            properties: {
+              linearX: { type: 'number', minimum: -0.5, maximum: 0.5 },
+              angularZ: { type: 'number', minimum: -0.785398, maximum: 0.785398 },
+              durationMs: { type: 'number', exclusiveMinimum: 0 },
+            },
+            additionalProperties: false,
+          },
+        },
+      },
+      additionalProperties: false,
+    };
+  }
+  return { type: 'object' };
 }
 
 function createPlanState(plan: RobotPlan): RobotPlanState {

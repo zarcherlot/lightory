@@ -38,6 +38,21 @@ export class BrowserMockTransport implements MessageTransport {
       return;
     }
 
+    if (message.type === 'planRobotIntent') {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: {
+            type: 'robotIntentPlanResult',
+            requestId: message.requestId,
+            ok: false,
+            error:
+              'Dev mock cannot call the model. Run the Lightory standalone server to test robot intent planning.',
+          },
+        }),
+      );
+      return;
+    }
+
     console.debug('[BrowserMockTransport] client message ignored', message);
   }
 

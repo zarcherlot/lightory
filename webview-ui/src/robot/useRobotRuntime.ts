@@ -5,8 +5,13 @@ import type { OfficeState } from '../office/engine/officeState.js';
 import { getRoleAgentId } from '../roles.js';
 import { MockRobotApiClient, MockRobotEventBus } from './mockRobotApi.js';
 import { HttpRobotApiClient } from './robotApiClient.js';
+import { normalizeRobotHttpBaseUrl } from './robotBaseUrl.js';
 import { WebSocketRobotEventClient } from './robotEventClient.js';
-import { buildPlanForIntent, parseRobotIntent, type RobotIntent } from './robotPlanBuilder.js';
+import {
+  buildPlanForIntent,
+  type RobotIntent,
+  type RobotIntentPlannerOutcome,
+} from './robotPlanBuilder.js';
 import { validateRobotPlanLocally } from './robotPlanSchema.js';
 import type {
   PlanValidationResult,
@@ -29,11 +34,17 @@ const ROBOT_ROLE_ID = 'travel';
 
 interface RobotRuntimeOptions {
   getOfficeState: () => OfficeState;
+  planRobotIntent: (
+    content: string,
+    tools: RobotToolDefinition[],
+  ) => Promise<RobotIntentPlannerOutcome>;
+  onRobotIntentPlanned?: (intent: RobotIntent) => void;
 }
 
 interface PendingConfirmation {
   plan: RobotPlan;
   validation: PlanValidationResult;
+  message?: string;
 }
 
 type VideoConsoleIntent =
@@ -56,7 +67,11 @@ export interface RobotRuntime {
   emergencyStop: () => void;
 }
 
-export function useRobotRuntime({ getOfficeState }: RobotRuntimeOptions): RobotRuntime {
+export function useRobotRuntime({
+  getOfficeState,
+  planRobotIntent,
+  onRobotIntentPlanned,
+}: RobotRuntimeOptions): RobotRuntime {
   const [config, setConfigState] = useState<RobotConnectionConfig>(loadConfig);
   const [tools, setTools] = useState<RobotToolDefinition[]>([]);
   const [connected, setConnected] = useState(false);
@@ -149,8 +164,9 @@ export function useRobotRuntime({ getOfficeState }: RobotRuntimeOptions): RobotR
   }, [appendEntry, clients, getOfficeState]);
 
   const setConfig = useCallback((nextConfig: RobotConnectionConfig) => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(nextConfig));
-    setConfigState(nextConfig);
+    const normalized = normalizeConfig(nextConfig);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+    setConfigState(normalized);
   }, []);
 
   const executePlan = useCallback(
@@ -192,18 +208,37 @@ export function useRobotRuntime({ getOfficeState }: RobotRuntimeOptions): RobotR
         return true;
       }
 
-      const intent = parseRobotIntent(content);
-      if (!intent) return false;
       appendEntry(content, 'done', 'system', 'user');
-      void preparePlan(intent)
-        .then(({ plan, validation }) => {
+      appendEntry('Planning robot intent with model...', 'running');
+      void planRobotIntent(content, toolsRef.current)
+        .then((outcome) => {
+          if (outcome.type === 'unsupported') {
+            appendEntry(`Robot intent unsupported: ${outcome.reason}`, 'error', 'stderr');
+            return null;
+          }
+          if (outcome.type === 'error') {
+            appendEntry(`Robot intent planner failed: ${outcome.message}`, 'error', 'stderr');
+            return null;
+          }
+          onRobotIntentPlanned?.(outcome.intent);
+          return preparePlan(outcome.intent).then((result) => ({
+            ...result,
+            confirmationMessage: outcome.confirmationMessage,
+          }));
+        })
+        .then((result) => {
+          if (!result) return;
+          const { plan, validation, confirmationMessage } = result;
           if (!validation.ok) {
             appendEntry(formatValidation(validation), 'error', 'stderr');
             return;
           }
           if (plan.requiresUserConfirmation) {
-            setPendingConfirmation({ plan, validation });
-            appendEntry(`High-risk plan waiting for confirmation: ${plan.intent}`, 'running');
+            setPendingConfirmation({ plan, validation, message: confirmationMessage });
+            appendEntry(
+              confirmationMessage ?? `High-risk plan waiting for confirmation: ${plan.intent}`,
+              'running',
+            );
             return;
           }
           void executePlan(plan, validation);
@@ -213,7 +248,7 @@ export function useRobotRuntime({ getOfficeState }: RobotRuntimeOptions): RobotR
         );
       return true;
     },
-    [appendEntry, clients.video, executePlan, preparePlan],
+    [appendEntry, clients.video, executePlan, onRobotIntentPlanned, planRobotIntent, preparePlan],
   );
 
   const confirmPendingPlan = useCallback(() => {
@@ -403,10 +438,15 @@ function loadConfig(): RobotConnectionConfig {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) return fallback;
   try {
-    return { ...fallback, ...(JSON.parse(raw) as Partial<RobotConnectionConfig>) };
+    return normalizeConfig({ ...fallback, ...(JSON.parse(raw) as Partial<RobotConnectionConfig>) });
   } catch {
     return fallback;
   }
+}
+
+function normalizeConfig(config: RobotConnectionConfig): RobotConnectionConfig {
+  if (config.mode === 'mock') return config;
+  return { ...config, baseUrl: normalizeRobotHttpBaseUrl(config.baseUrl) };
 }
 
 function getSessionId(): string {

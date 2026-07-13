@@ -9,6 +9,7 @@ import type { AgentRuntime } from './agentRuntime.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import type {
   AssetCache,
+  PlanRobotIntentSideEffect,
   SetHooksEnabledSideEffect,
   StartRoleTaskSideEffect,
 } from './clientMessageHandler.js';
@@ -40,6 +41,8 @@ export interface HttpServerOptions {
   onSetHooksEnabled?: SetHooksEnabledSideEffect;
   /** Invoked when a browser drops a role into the scene. */
   onStartRoleTask?: StartRoleTaskSideEffect;
+  /** Invoked when the browser needs free-form robot text converted into a restricted intent. */
+  onPlanRobotIntent?: PlanRobotIntentSideEffect;
 }
 
 /** Result of createHttpServer(). */
@@ -195,6 +198,7 @@ function registerWebSocketRoute(app: FastifyInstance, options: HttpServerOptions
           cache: options.assetCache ?? null,
           onSetHooksEnabled: options.onSetHooksEnabled,
           onStartRoleTask: options.onStartRoleTask,
+          onPlanRobotIntent: options.onPlanRobotIntent,
         });
       } catch {
         // Malformed JSON, ignore

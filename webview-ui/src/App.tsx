@@ -24,7 +24,12 @@ import { OfficeState } from './office/engine/officeState.js';
 import { isRotatable } from './office/layout/furnitureCatalog.js';
 import { getPetCount } from './office/sprites/petSpriteData.js';
 import { EditTool } from './office/types.js';
-import { parseRobotIntent, type RobotIntent } from './robot/robotPlanBuilder.js';
+import {
+  normalizeRobotIntent,
+  type RobotIntent,
+  type RobotIntentPlannerOutcome,
+} from './robot/robotPlanBuilder.js';
+import type { RobotToolDefinition } from './robot/types.js';
 import { useRobotRuntime } from './robot/useRobotRuntime.js';
 import { createDefaultRoleConfig, type RoleRuntimeConfig } from './roleConfig.js';
 import { getRoleAgentId, getRoleDefinition, roleDefinitions } from './roles.js';
@@ -292,7 +297,49 @@ function App() {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const [editorTickForKeyboard, setEditorTickForKeyboard] = useState(0);
-  const robotRuntime = useRobotRuntime({ getOfficeState });
+  const visualizeRobotIntentRef = useRef<(intent: RobotIntent) => void>(() => {});
+  const planRobotIntentWithModel = useCallback(
+    (content: string, tools: RobotToolDefinition[]): Promise<RobotIntentPlannerOutcome> =>
+      new Promise((resolve) => {
+        const requestId = `robot_intent_${Date.now().toString(36)}_${Math.random()
+          .toString(36)
+          .slice(2)}`;
+        let settled = false;
+        let timeout = 0;
+        let unsubscribe = () => {};
+        const cleanup = () => {
+          settled = true;
+          window.clearTimeout(timeout);
+          unsubscribe();
+        };
+        timeout = window.setTimeout(() => {
+          if (settled) return;
+          cleanup();
+          resolve({ type: 'error', message: 'Robot intent planner timed out.' });
+        }, 100_000);
+        unsubscribe = transport.onMessage((message) => {
+          if (message.type !== 'robotIntentPlanResult' || message.requestId !== requestId) return;
+          cleanup();
+          if (!message.ok) {
+            resolve({
+              type: 'error',
+              message: message.error ?? 'Robot intent planner failed.',
+            });
+            return;
+          }
+          resolve(normalizeRobotIntent(message.intent));
+        });
+        transport.send({ type: 'planRobotIntent', requestId, content, tools });
+      }),
+    [],
+  );
+  const robotRuntime = useRobotRuntime({
+    getOfficeState,
+    planRobotIntent: planRobotIntentWithModel,
+    onRobotIntentPlanned: useCallback((intent: RobotIntent) => {
+      visualizeRobotIntentRef.current(intent);
+    }, []),
+  });
   useEditorKeyboard(
     editor.isEditMode,
     editorState,
@@ -361,6 +408,10 @@ function App() {
     },
     [addRobotRolesToScene],
   );
+
+  useEffect(() => {
+    visualizeRobotIntentRef.current = visualizeRobotIntent;
+  }, [visualizeRobotIntent]);
 
   useEffect(() => {
     if (!layoutReady || initialRobotRolesAddedRef.current) return;
@@ -822,8 +873,6 @@ function App() {
         onSubmitInput={(content) => {
           const roleMention = parseRoleMentionInput(content);
           if (roleMention) return startConsoleRoleChat(roleMention);
-          const intent = parseRobotIntent(content);
-          visualizeRobotIntent(intent);
           return robotRuntime.handleConsoleInput(content);
         }}
         onRobotEmergencyStop={robotRuntime.emergencyStop}

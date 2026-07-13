@@ -24,6 +24,11 @@ export type StartRoleTaskSideEffect = (
   inputCards: RoleTaskInputCard[],
   taskOverride?: RoleTaskOverride,
 ) => Promise<void> | void;
+export type PlanRobotIntentSideEffect = (request: {
+  requestId: string;
+  content: string;
+  tools: Array<Record<string, unknown>>;
+}) => Promise<{ ok: true; intent: Record<string, unknown> } | { ok: false; error: string }>;
 
 /** Cached assets loaded at server startup. Sent to each WebSocket client on webviewReady. */
 export interface AssetCache {
@@ -43,6 +48,8 @@ export interface ClientMessageContext {
   onSetHooksEnabled?: SetHooksEnabledSideEffect;
   /** Launch a role markdown task and stream its output back to this client. */
   onStartRoleTask?: StartRoleTaskSideEffect;
+  /** Convert free-form robot commands into a restricted RobotIntent object. */
+  onPlanRobotIntent?: PlanRobotIntentSideEffect;
 }
 
 // Setting key constants
@@ -145,6 +152,46 @@ export function handleClientMessage(
         stream: 'system',
         content,
       });
+      break;
+    }
+
+    case 'planRobotIntent': {
+      const requestId = typeof msg.requestId === 'string' ? msg.requestId : '';
+      const content = typeof msg.content === 'string' ? msg.content.trim() : '';
+      const tools = Array.isArray(msg.tools)
+        ? (msg.tools.filter((tool) => tool && typeof tool === 'object') as Array<
+            Record<string, unknown>
+          >)
+        : [];
+      if (!requestId || !content) break;
+      void (async () => {
+        try {
+          const result = await ctx.onPlanRobotIntent?.({ requestId, content, tools });
+          if (!result) {
+            send({
+              type: 'robotIntentPlanResult',
+              requestId,
+              ok: false,
+              error: 'Robot intent planner is unavailable.',
+            });
+            return;
+          }
+          send({
+            type: 'robotIntentPlanResult',
+            requestId,
+            ok: result.ok,
+            intent: result.ok ? result.intent : undefined,
+            error: result.ok ? undefined : result.error,
+          });
+        } catch (error) {
+          send({
+            type: 'robotIntentPlanResult',
+            requestId,
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      })();
       break;
     }
 

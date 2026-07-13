@@ -1,3 +1,4 @@
+import { normalizeRobotWsBaseUrl } from './robotBaseUrl.js';
 import type { RobotConnectionConfig, RobotEvent, RobotEventClient } from './types.js';
 
 export class WebSocketRobotEventClient implements RobotEventClient {
@@ -30,7 +31,7 @@ export class WebSocketRobotEventClient implements RobotEventClient {
   }
 
   private openSocket(): void {
-    const url = new URL('/api/events', normalizeWsBaseUrl(this.config.baseUrl));
+    const url = new URL('/api/events', normalizeRobotWsBaseUrl(this.config.baseUrl));
     if (this.lastEventId) url.searchParams.set('lastEventId', this.lastEventId);
     if (this.config.token) url.searchParams.set('token', this.config.token);
     this.socket = new WebSocket(url);
@@ -50,10 +51,4 @@ export class WebSocketRobotEventClient implements RobotEventClient {
       this.openSocket();
     }, 1200);
   }
-}
-
-function normalizeWsBaseUrl(baseUrl: string): string {
-  const httpUrl = new URL(baseUrl.trim() || window.location.origin);
-  httpUrl.protocol = httpUrl.protocol === 'https:' ? 'wss:' : 'ws:';
-  return httpUrl.toString();
 }

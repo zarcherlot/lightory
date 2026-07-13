@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { isSoundEnabled, setSoundEnabled } from '../notificationSound.js';
+import { normalizeRobotHttpBaseUrl } from '../robot/robotBaseUrl.js';
 import type { RobotConnectionConfig, RobotToolDefinition } from '../robot/types.js';
 import { transport } from '../transport/index.js';
 import { Button } from './ui/Button.js';
@@ -195,7 +196,19 @@ export function SettingsModal({
           />
         </label>
         <div className="px-10 py-4">
-          <Button size="sm" variant="accent" onClick={() => onRobotConfigChange(draftRobotConfig)}>
+          <Button
+            size="sm"
+            variant="accent"
+            onClick={() =>
+              onRobotConfigChange({
+                ...draftRobotConfig,
+                baseUrl:
+                  draftRobotConfig.mode === 'mock'
+                    ? draftRobotConfig.baseUrl
+                    : normalizeRobotHttpBaseUrl(draftRobotConfig.baseUrl),
+              })
+            }
+          >
             Save Robot
           </Button>
         </div>

@@ -43,7 +43,7 @@ export interface RoleTaskRunnerOptions {
   cwd: string;
 }
 
-interface CommandSpec {
+export interface CommandSpec {
   command: string;
   args: string[];
   env?: Record<string, string>;
@@ -437,7 +437,7 @@ function windSpeedToScale(kmh: number): number {
   return 12;
 }
 
-function buildRoleTaskCommand(
+export function buildRoleTaskCommand(
   provider: HookProvider,
   prompt: string,
   cwd: string,

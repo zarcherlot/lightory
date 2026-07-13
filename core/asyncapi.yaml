@@ -112,6 +112,7 @@ components:
         # Role task output
         - $ref: '#/components/schemas/RoleTaskConsole'
         - $ref: '#/components/schemas/RoleTaskStatus'
+        - $ref: '#/components/schemas/RobotIntentPlanResult'
         # Diagnostics
         - $ref: '#/components/schemas/AgentDiagnostics'
       discriminator: type
@@ -121,6 +122,7 @@ components:
         - $ref: '#/components/schemas/WebviewReady'
         - $ref: '#/components/schemas/StartRoleTask'
         - $ref: '#/components/schemas/ConsoleUserInput'
+        - $ref: '#/components/schemas/PlanRobotIntent'
         - $ref: '#/components/schemas/FocusAgent'
         - $ref: '#/components/schemas/CloseAgent'
         - $ref: '#/components/schemas/SaveAgentSeats'
@@ -670,6 +672,24 @@ components:
         weatherIcon:
           enum: [sun, cloud, rain, snow, storm]
 
+    RobotIntentPlanResult:
+      description: Result of converting free-form robot text into a restricted robot intent.
+      type: object
+      additionalProperties: false
+      required: [type, requestId, ok]
+      properties:
+        type:
+          const: robotIntentPlanResult
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        intent:
+          type: object
+          additionalProperties: true
+        error:
+          type: string
+
     # ── Client message variants ────────────────────────────────────
 
     WebviewReady:
@@ -737,6 +757,24 @@ components:
           type: string
         roleId:
           type: string
+
+    PlanRobotIntent:
+      description: Ask the server-side model provider to convert free-form robot text into a restricted robot intent.
+      type: object
+      additionalProperties: false
+      required: [type, requestId, content, tools]
+      properties:
+        type:
+          const: planRobotIntent
+        requestId:
+          type: string
+        content:
+          type: string
+        tools:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
 
     FocusAgent:
       description: Focus an agent's terminal.

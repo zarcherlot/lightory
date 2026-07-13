@@ -34,12 +34,14 @@ export type ServerMessage =
   | ExternalAssetDirectoriesUpdated
   | RoleTaskConsole
   | RoleTaskStatus
+  | RobotIntentPlanResult
   | AgentDiagnostics;
 
 export type ClientMessage =
   | WebviewReady
   | StartRoleTask
   | ConsoleUserInput
+  | PlanRobotIntent
   | FocusAgent
   | CloseAgent
   | SaveAgentSeats
@@ -285,6 +287,14 @@ export type AnonymousSchema_170 = 'started' | 'done' | 'error';
 
 export type AnonymousSchema_171 = 'sun' | 'cloud' | 'rain' | 'snow' | 'storm';
 
+export interface RobotIntentPlanResult {
+  type: 'robotIntentPlanResult';
+  requestId: string;
+  ok: boolean;
+  intent?: Record<string, any>;
+  error?: string;
+}
+
 export interface AgentDiagnostics {
   type: 'agentDiagnostics';
   agents: Record<string, any>[];
@@ -317,6 +327,13 @@ export interface ConsoleUserInput {
   type: 'consoleUserInput';
   content: string;
   roleId?: string;
+}
+
+export interface PlanRobotIntent {
+  type: 'planRobotIntent';
+  requestId: string;
+  content: string;
+  tools: Record<string, any>[];
 }
 
 export interface FocusAgent {
