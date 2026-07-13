@@ -226,7 +226,11 @@ interface RobotToolDefinition {
 | `memory.upsertPoi`   | medium   | 写入 POI，需要 schema 校验         |
 | `base.state`         | low      | 查询底盘状态                       |
 | `base.stop`          | critical | 急停，永远允许                     |
+| `base.driveDistance` | high     | 按里程计移动受限距离               |
+| `base.rotateAngle`   | high     | 按里程计旋转受限角度               |
+| `base.velocityProfile` | high   | 执行受限速度曲线                   |
 | `base.followPath`    | high     | 低速路径执行，需要 safety 和 lease |
+| `reactive.run`       | high     | 运行受限实时反应式协同 graph       |
 | `arm.state`          | low      | 查询机械臂状态                     |
 | `arm.stop`           | critical | 机械臂急停，永远允许               |
 | `arm.grasp`          | high     | 抓取，需要 safety 和确认           |
@@ -285,6 +289,54 @@ interface RobotPlanCondition {
   path: string;
   equals?: unknown;
   exists?: boolean;
+}
+```
+
+### Reactive Graph
+
+`reactive.run` 用于“边感知边输出”的协同任务，例如跟着拍手/唱歌/音乐跳舞、跟着音乐闪灯、根据现场声音做一段表演。Pad 侧 LLM 只生成受限 graph 配置；音频采集、节拍/情绪分析、运动和灯光输出循环都在 Robot 侧执行。
+
+v1 节点类型受限为：
+
+- source：`audio.microphone`
+- processor：`audio.beatTracker`、`audio.onsetDetector`、`audio.moodEstimator`
+- output：`base.motionReactive`、`led.reactivePattern`、`speech.reactiveCue`
+
+如果 graph 包含 `base.motionReactive`，plan 必须是 high risk、需要用户确认，并且 step safety 必须包含 `requiresLease: "base"` 和 `stopOnObstacle: true`。线速度上限 0.5m/s，角速度上限 0.785398rad/s，默认分别为 0.2m/s 和 0.349066rad/s。Robot 侧应先监听声音再运动；默认启动 5 秒没有有效声音则结束，运行中静音 5 秒则停止。
+
+```json
+{
+  "id": "s1",
+  "tool": "reactive.run",
+  "args": {
+    "durationMs": 30000,
+    "sources": [{ "id": "mic", "type": "audio.microphone", "args": { "sampleRateHz": 16000 } }],
+    "processors": [{ "id": "beat", "type": "audio.beatTracker", "input": "mic", "args": {} }],
+    "outputs": [
+      {
+        "id": "base",
+        "type": "base.motionReactive",
+        "input": "beat",
+        "args": { "style": "dance", "maxSpeedMps": 0.35, "maxAngularRadps": 0.6 }
+      },
+      {
+        "id": "led",
+        "type": "led.reactivePattern",
+        "input": "beat",
+        "args": { "style": "cheerful" }
+      }
+    ],
+    "safety": {
+      "requiresLease": ["base"],
+      "stopOnObstacle": true,
+      "startupNoInputMs": 5000,
+      "stopOnSilenceMs": 5000,
+      "maxSpeedMps": 0.35,
+      "maxAngularRadps": 0.6
+    }
+  },
+  "timeoutMs": 31000,
+  "safety": { "requiresLease": "base", "stopOnObstacle": true, "maxSpeedMps": 0.35 }
 }
 ```
 

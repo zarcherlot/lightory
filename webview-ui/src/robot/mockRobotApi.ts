@@ -27,6 +27,7 @@ const mockTools: RobotToolDefinition[] = [
   tool('arm.grasp', 'arm', 'high', true, 15000, '抓取物体', 'arm'),
   tool('arm.place', 'arm', 'high', true, 15000, '放置物体', 'arm'),
   tool('vision.snapshot', 'vision', 'low', false, 2000, '获取低频视觉摘要'),
+  tool('reactive.run', 'audio', 'high', true, 120000, '运行受限实时音频反应式协同任务'),
   tool('watchdog.acquire', 'watchdog', 'medium', false, 1000, '获取动作 lease'),
   tool('watchdog.heartbeat', 'watchdog', 'medium', false, 1000, '维持动作 lease'),
   tool('watchdog.release', 'watchdog', 'medium', false, 1000, '释放动作 lease'),
@@ -242,6 +243,58 @@ function inputSchemaForTool(name: RobotToolDefinition['name']): Record<string, u
             additionalProperties: false,
           },
         },
+      },
+      additionalProperties: false,
+    };
+  }
+  if (name === 'reactive.run') {
+    return {
+      type: 'object',
+      required: ['durationMs', 'sources', 'processors', 'outputs'],
+      properties: {
+        durationMs: { type: 'number', minimum: 250, maximum: 120000 },
+        sources: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['id', 'type', 'args'],
+            properties: {
+              id: { type: 'string' },
+              type: { const: 'audio.microphone' },
+              args: { type: 'object' },
+            },
+            additionalProperties: false,
+          },
+        },
+        processors: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['id', 'type', 'input', 'args'],
+            properties: {
+              id: { type: 'string' },
+              type: { enum: ['audio.beatTracker', 'audio.onsetDetector', 'audio.moodEstimator'] },
+              input: { type: 'string' },
+              args: { type: 'object' },
+            },
+            additionalProperties: false,
+          },
+        },
+        outputs: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['id', 'type', 'input', 'args'],
+            properties: {
+              id: { type: 'string' },
+              type: { enum: ['base.motionReactive', 'led.reactivePattern', 'speech.reactiveCue'] },
+              input: { type: 'string' },
+              args: { type: 'object' },
+            },
+            additionalProperties: false,
+          },
+        },
+        safety: { type: 'object' },
       },
       additionalProperties: false,
     };

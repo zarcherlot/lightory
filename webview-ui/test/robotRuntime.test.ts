@@ -18,7 +18,7 @@ import {
   parseRobotIntent,
 } from '../src/robot/robotPlanBuilder.js';
 import { validateRobotPlanLocally } from '../src/robot/robotPlanSchema.js';
-import type { RobotApiEnvelope, RobotEvent } from '../src/robot/types.js';
+import type { RobotApiEnvelope, RobotEvent, RobotPlan } from '../src/robot/types.js';
 import { HttpVideoStreamClient, MockVideoStreamClient } from '../src/robot/videoStreamClient.js';
 
 const ctx = { padId: 'test-pad', sessionId: 'test-session' };
@@ -200,6 +200,144 @@ test('normalizes requested movement speeds to configured limits', () => {
     { type: 'driveDistance', distanceMeters: 1, maxSpeedMps: 0.5 },
     { type: 'rotateAngle', angleRad: 6.283185, maxAngularRadps: 0.785398 },
   ]);
+});
+
+test('normalizes reactive graph intents into a safe robot plan', () => {
+  const outcome = normalizeRobotIntent({
+    type: 'reactive',
+    intent: '跟着音乐跳舞并闪灯',
+    confirmationMessage: '我会跟着音乐控制底盘和灯光，请确认小车已架空或周围安全。',
+    graph: {
+      durationMs: 30_000,
+      sources: [{ id: 'mic', type: 'audio.microphone', args: { sampleRateHz: 16000 } }],
+      processors: [{ id: 'beat', type: 'audio.beatTracker', input: 'mic', args: {} }],
+      outputs: [
+        {
+          id: 'base',
+          type: 'base.motionReactive',
+          input: 'beat',
+          args: { style: 'dance', maxSpeedMps: 0.9, maxAngularRadps: 2 },
+        },
+        {
+          id: 'led',
+          type: 'led.reactivePattern',
+          input: 'beat',
+          args: { style: 'cheerful' },
+        },
+      ],
+      safety: { startupNoInputMs: 5000, stopOnSilenceMs: 5000 },
+    },
+  });
+
+  assert.equal(outcome.type, 'planned');
+  assert.equal(
+    outcome.type === 'planned' ? outcome.confirmationMessage : '',
+    '我会跟着音乐控制底盘和灯光，请确认小车已架空或周围安全。',
+  );
+  const intent = outcome.type === 'planned' ? outcome.intent : null;
+  assert.equal(intent?.type, 'reactive');
+  assert.equal(
+    intent?.type === 'reactive' ? intent.graph.outputs[0]?.args.maxSpeedMps : undefined,
+    0.5,
+  );
+  assert.equal(
+    intent?.type === 'reactive' ? intent.graph.outputs[0]?.args.maxAngularRadps : undefined,
+    0.785398,
+  );
+  assert.equal(intent?.type === 'reactive' ? intent.graph.safety?.startupNoInputMs : undefined, 5000);
+  assert.equal(intent?.type === 'reactive' ? intent.graph.safety?.stopOnSilenceMs : undefined, 5000);
+
+  const plan = intent ? buildPlanForIntent(ctx, intent) : null;
+  assert.deepEqual(
+    plan?.steps.map((step) => step.tool),
+    ['reactive.run', 'base.stop'],
+  );
+  assert.equal(plan?.risk, 'high');
+  assert.equal(plan?.requiresUserConfirmation, true);
+  assert.equal(plan?.steps[0]?.safety?.requiresLease, 'base');
+  assert.equal(plan?.schemaVersion, 'robot-plan/v1');
+  assert.deepEqual(
+    Object.keys(plan?.steps[0]?.args ?? {}).sort(),
+    ['durationMs', 'outputs', 'processors', 'safety', 'sources'],
+  );
+  assert.equal(validateRobotPlanLocally(plan!, getMockRobotTools()).ok, true);
+});
+
+test('local validation rejects frontend-incompatible reactive DSL shapes', () => {
+  const validOutcome = normalizeRobotIntent({
+    type: 'reactive',
+    intent: '跟着音乐跳舞',
+    graph: {
+      durationMs: 30_000,
+      sources: [{ id: 'mic', type: 'audio.microphone', args: {} }],
+      processors: [{ id: 'beat', type: 'audio.beatTracker', input: 'mic', args: {} }],
+      outputs: [{ id: 'base', type: 'base.motionReactive', input: 'beat', args: {} }],
+    },
+  });
+  assert.equal(validOutcome.type, 'planned');
+  const validPlan = buildPlanForIntent(
+    ctx,
+    validOutcome.type === 'planned' ? validOutcome.intent : { type: 'speech', text: '' },
+  );
+  const invalidPlan: RobotPlan = {
+    ...validPlan,
+    schemaVersion: 'robot-plan/v1',
+    steps: [
+      {
+        ...validPlan.steps[0]!,
+        args: {
+          durationMs: 30_000,
+          inputs: [{ id: 'mic', type: 'microphone', device: 'plughw:2,0' }],
+          graph: [{ id: 'beat_to_motion', type: 'beatToMotion', input: 'mic' }],
+          outputs: [{ id: 'motion', type: 'motion', maxSpeedMps: 0.08 }],
+        },
+      },
+      validPlan.steps[1]!,
+    ],
+  };
+
+  const validation = validateRobotPlanLocally(invalidPlan, getMockRobotTools());
+
+  assert.equal(validation.ok, false);
+  assert.deepEqual(
+    validation.errors.map((error) => error.code).filter((code) => code.startsWith('reactive_')),
+    [
+      'reactive_sources_required',
+      'reactive_processors_required',
+      'reactive_output_type',
+      'reactive_output_input',
+    ],
+  );
+});
+
+test('rejects invalid reactive graph wiring', () => {
+  assert.deepEqual(
+    normalizeRobotIntent({
+      type: 'reactive',
+      intent: '跟着音乐做不存在的输出',
+      graph: {
+        durationMs: 30_000,
+        sources: [{ id: 'mic', type: 'audio.microphone', args: {} }],
+        processors: [{ id: 'beat', type: 'audio.beatTracker', input: 'mic', args: {} }],
+        outputs: [{ id: 'unknown', type: 'base.flyReactive', input: 'beat', args: {} }],
+      },
+    }),
+    { type: 'error', message: 'reactive output type is unsupported.' },
+  );
+
+  assert.deepEqual(
+    normalizeRobotIntent({
+      type: 'reactive',
+      intent: '跟着音乐跳舞',
+      graph: {
+        durationMs: 30_000,
+        sources: [{ id: 'mic', type: 'audio.microphone', args: {} }],
+        processors: [{ id: 'beat', type: 'audio.beatTracker', input: 'missing', args: {} }],
+        outputs: [{ id: 'base', type: 'base.motionReactive', input: 'beat', args: {} }],
+      },
+    }),
+    { type: 'error', message: 'reactive processor input is invalid.' },
+  );
 });
 
 test('mock robot emits step and done events while executing a plan', async () => {

@@ -90,6 +90,9 @@ export function validateRobotPlanLocally(
         stepId: step.id,
       });
     }
+    if (step.tool === 'reactive.run') {
+      errors.push(...validateReactiveRunStep(step));
+    }
   }
 
   for (const step of plan.steps) {
@@ -122,6 +125,221 @@ export function validateRobotPlanLocally(
     errors,
     warnings,
   };
+}
+
+function validateReactiveRunStep(step: RobotPlan['steps'][number]): PlanValidationIssue[] {
+  const errors: PlanValidationIssue[] = [];
+  const args = step.args;
+  const durationMs = asNumber(args.durationMs);
+  if (durationMs === undefined || durationMs <= 0 || durationMs > 120_000) {
+    errors.push({
+      code: 'reactive_duration_limit',
+      message: 'durationMs must be <= 120000ms.',
+      stepId: step.id,
+    });
+  }
+
+  const sourceIds = validateReactiveSources(args.sources, step.id, errors);
+  const processorIds = validateReactiveProcessors(args.processors, sourceIds, step.id, errors);
+  const outputTypes = validateReactiveOutputs(
+    args.outputs,
+    new Set([...sourceIds, ...processorIds]),
+    step.id,
+    errors,
+  );
+
+  const safety = isRecord(args.safety) ? args.safety : {};
+  if (args.safety !== undefined && !isRecord(args.safety)) {
+    errors.push({ code: 'reactive_safety', message: 'safety must be an object.', stepId: step.id });
+  }
+  const maxSpeedMps = asNumber(safety.maxSpeedMps ?? 0.2);
+  const maxAngularRadps = asNumber(safety.maxAngularRadps ?? 0.349066);
+  const stopOnSilenceMs = asNumber(safety.stopOnSilenceMs ?? 5000);
+  if (maxSpeedMps === undefined || maxSpeedMps <= 0 || maxSpeedMps > 0.5) {
+    errors.push({
+      code: 'reactive_speed_limit',
+      message: 'safety.maxSpeedMps must be <= 0.5.',
+      stepId: step.id,
+    });
+  }
+  if (maxAngularRadps === undefined || maxAngularRadps <= 0 || maxAngularRadps > 0.785398) {
+    errors.push({
+      code: 'reactive_angular_limit',
+      message: 'safety.maxAngularRadps must be <= 0.785398.',
+      stepId: step.id,
+    });
+  }
+  if (stopOnSilenceMs === undefined || stopOnSilenceMs <= 0) {
+    errors.push({
+      code: 'reactive_silence_limit',
+      message: 'safety.stopOnSilenceMs must be positive.',
+      stepId: step.id,
+    });
+  }
+
+  if (outputTypes.has('base.motionReactive')) {
+    if (step.safety?.requiresLease !== 'base') {
+      errors.push({
+        code: 'lease_required',
+        message: 'base.motionReactive requires base lease.',
+        stepId: step.id,
+      });
+    }
+    if (step.safety?.stopOnObstacle !== true) {
+      errors.push({
+        code: 'reactive_obstacle_stop',
+        message: 'base.motionReactive requires stopOnObstacle.',
+        stepId: step.id,
+      });
+    }
+  }
+
+  return errors;
+}
+
+function validateReactiveSources(
+  raw: unknown,
+  stepId: string,
+  errors: PlanValidationIssue[],
+): Set<string> {
+  const ids = new Set<string>();
+  if (!Array.isArray(raw) || raw.length === 0) {
+    errors.push({
+      code: 'reactive_sources_required',
+      message: 'sources must be a non-empty array.',
+      stepId,
+    });
+    return ids;
+  }
+  for (const item of raw) {
+    if (!isRecord(item) || !validNodeId(item.id) || ids.has(item.id)) {
+      errors.push({ code: 'reactive_source_id', message: 'source id is invalid.', stepId });
+      continue;
+    }
+    if (item.type !== 'audio.microphone') {
+      errors.push({ code: 'reactive_source_type', message: 'source type is unsupported.', stepId });
+    }
+    ids.add(item.id);
+  }
+  return ids;
+}
+
+function validateReactiveProcessors(
+  raw: unknown,
+  sourceIds: Set<string>,
+  stepId: string,
+  errors: PlanValidationIssue[],
+): Set<string> {
+  const ids = new Set<string>();
+  if (!Array.isArray(raw) || raw.length === 0) {
+    errors.push({
+      code: 'reactive_processors_required',
+      message: 'processors must be a non-empty array.',
+      stepId,
+    });
+    return ids;
+  }
+  const knownIds = new Set(sourceIds);
+  for (const item of raw) {
+    if (!isRecord(item) || !validNodeId(item.id) || knownIds.has(item.id)) {
+      errors.push({ code: 'reactive_processor_id', message: 'processor id is invalid.', stepId });
+      continue;
+    }
+    if (
+      item.type !== 'audio.beatTracker' &&
+      item.type !== 'audio.onsetDetector' &&
+      item.type !== 'audio.moodEstimator'
+    ) {
+      errors.push({
+        code: 'reactive_processor_type',
+        message: 'processor type is unsupported.',
+        stepId,
+      });
+    }
+    if (!validNodeId(item.input) || !knownIds.has(item.input)) {
+      errors.push({
+        code: 'reactive_processor_input',
+        message: 'processor input is invalid.',
+        stepId,
+      });
+    }
+    ids.add(item.id);
+    knownIds.add(item.id);
+  }
+  return ids;
+}
+
+function validateReactiveOutputs(
+  raw: unknown,
+  knownIds: Set<string>,
+  stepId: string,
+  errors: PlanValidationIssue[],
+): Set<string> {
+  const outputTypes = new Set<string>();
+  const ids = new Set<string>();
+  if (!Array.isArray(raw) || raw.length === 0) {
+    errors.push({
+      code: 'reactive_outputs_required',
+      message: 'outputs must be a non-empty array.',
+      stepId,
+    });
+    return outputTypes;
+  }
+  for (const item of raw) {
+    if (!isRecord(item) || !validNodeId(item.id) || ids.has(item.id)) {
+      errors.push({ code: 'reactive_output_id', message: 'output id is invalid.', stepId });
+      continue;
+    }
+    if (
+      item.type !== 'base.motionReactive' &&
+      item.type !== 'led.reactivePattern' &&
+      item.type !== 'speech.reactiveCue'
+    ) {
+      errors.push({ code: 'reactive_output_type', message: 'output type is unsupported.', stepId });
+    }
+    if (!validNodeId(item.input) || !knownIds.has(item.input)) {
+      errors.push({ code: 'reactive_output_input', message: 'output input is invalid.', stepId });
+    }
+    if (item.type === 'base.motionReactive') {
+      const outputArgs = isRecord(item.args) ? item.args : {};
+      const maxSpeedMps = asNumber(outputArgs.maxSpeedMps ?? 0.2);
+      const maxAngularRadps = asNumber(outputArgs.maxAngularRadps ?? 0.349066);
+      if (maxSpeedMps === undefined || maxSpeedMps <= 0 || maxSpeedMps > 0.5) {
+        errors.push({
+          code: 'reactive_output_speed',
+          message: 'base.motionReactive maxSpeedMps must be <= 0.5.',
+          stepId,
+        });
+      }
+      if (maxAngularRadps === undefined || maxAngularRadps <= 0 || maxAngularRadps > 0.785398) {
+        errors.push({
+          code: 'reactive_output_angular',
+          message: 'base.motionReactive maxAngularRadps must be <= 0.785398.',
+          stepId,
+        });
+      }
+    }
+    ids.add(item.id);
+    if (typeof item.type === 'string') outputTypes.add(item.type);
+  }
+  return outputTypes;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function asNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function validNodeId(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= 32 &&
+    /^[A-Za-z][A-Za-z0-9_-]*$/.test(value)
+  );
 }
 
 function isAlwaysAllowedStopTool(toolName: string): boolean {

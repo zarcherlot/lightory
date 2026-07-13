@@ -12,6 +12,21 @@ const DEFAULT_LINEAR_SPEED_MPS = 0.2;
 const MAX_LINEAR_SPEED_MPS = 0.5;
 const DEFAULT_ANGULAR_SPEED_RADPS = degreesToRadians(20);
 const MAX_ANGULAR_SPEED_RADPS = degreesToRadians(45);
+const DEFAULT_REACTIVE_DURATION_MS = 30_000;
+const MAX_REACTIVE_DURATION_MS = 120_000;
+const DEFAULT_REACTIVE_STOP_ON_SILENCE_MS = 5_000;
+const DEFAULT_REACTIVE_STARTUP_NO_INPUT_MS = 5_000;
+const ALLOWED_REACTIVE_SOURCE_TYPES = new Set(['audio.microphone']);
+const ALLOWED_REACTIVE_PROCESSOR_TYPES = new Set([
+  'audio.beatTracker',
+  'audio.onsetDetector',
+  'audio.moodEstimator',
+]);
+const ALLOWED_REACTIVE_OUTPUT_TYPES = new Set([
+  'base.motionReactive',
+  'led.reactivePattern',
+  'speech.reactiveCue',
+]);
 
 const slugify = (value: string) =>
   value
@@ -284,6 +299,39 @@ export function buildSequencePlan(
   );
 }
 
+export function buildReactivePlan(
+  ctx: BuildContext,
+  intent: string,
+  graph: ReactiveGraph,
+): RobotPlan {
+  const durationMs = normalizeReactiveDuration(graph.durationMs);
+  return createPlan(
+    ctx,
+    'plan_reactive',
+    intent,
+    graph.outputs.some((output) => output.type === 'base.motionReactive') ? 'high' : 'medium',
+    graph.outputs.some((output) => output.type === 'base.motionReactive'),
+    [
+      {
+        id: 's1',
+        tool: 'reactive.run',
+        args: { ...graph, durationMs },
+        timeoutMs: durationMs + 1000,
+        safety: graph.outputs.some((output) => output.type === 'base.motionReactive')
+          ? {
+              requiresLease: 'base',
+              stopOnObstacle: true,
+              maxSpeedMps: normalizeLinearSpeed(graph.safety?.maxSpeedMps),
+            }
+          : undefined,
+      },
+      { id: 's2', tool: 'base.stop', dependsOn: ['s1'], args: {} },
+    ],
+    durationMs + 2000,
+    ['实时音频分析和输出控制在小车侧执行', 'LLM 只生成受限 reactive graph 配置'],
+  );
+}
+
 export type RobotSequenceAction =
   | { type: 'driveDistance'; distanceMeters: number; maxSpeedMps?: number }
   | { type: 'rotateAngle'; angleRad: number; maxAngularRadps?: number }
@@ -292,6 +340,43 @@ export type RobotSequenceAction =
       intent: string;
       segments: Array<{ linearX: number; angularZ: number; durationMs: number }>;
     };
+
+export interface ReactiveGraph {
+  durationMs: number;
+  sources: ReactiveSourceNode[];
+  processors: ReactiveProcessorNode[];
+  outputs: ReactiveOutputNode[];
+  safety?: ReactiveSafety;
+}
+
+export interface ReactiveSourceNode {
+  id: string;
+  type: 'audio.microphone';
+  args: Record<string, unknown>;
+}
+
+export interface ReactiveProcessorNode {
+  id: string;
+  type: 'audio.beatTracker' | 'audio.onsetDetector' | 'audio.moodEstimator';
+  input: string;
+  args: Record<string, unknown>;
+}
+
+export interface ReactiveOutputNode {
+  id: string;
+  type: 'base.motionReactive' | 'led.reactivePattern' | 'speech.reactiveCue';
+  input: string;
+  args: Record<string, unknown>;
+}
+
+export interface ReactiveSafety {
+  requiresLease?: Array<'base' | 'arm'>;
+  stopOnObstacle?: boolean;
+  stopOnSilenceMs?: number;
+  startupNoInputMs?: number;
+  maxSpeedMps?: number;
+  maxAngularRadps?: number;
+}
 
 export type RobotIntent =
   | { type: 'rememberPoi'; poiName: string }
@@ -305,7 +390,8 @@ export type RobotIntent =
       intent: string;
       segments: Array<{ linearX: number; angularZ: number; durationMs: number }>;
     }
-  | { type: 'sequence'; intent: string; actions: RobotSequenceAction[] };
+  | { type: 'sequence'; intent: string; actions: RobotSequenceAction[] }
+  | { type: 'reactive'; intent: string; graph: ReactiveGraph };
 
 export type RobotIntentPlannerOutcome =
   | { type: 'planned'; intent: RobotIntent; confirmationMessage?: string }
@@ -413,6 +499,15 @@ export function normalizeRobotIntent(raw: unknown): RobotIntentPlannerOutcome {
     }
     return plannedOutcome({ type: 'sequence', intent: intent.intent.trim(), actions }, intent);
   }
+  if (intent.type === 'reactive') {
+    if (typeof intent.intent !== 'string' || !intent.intent.trim()) {
+      return { type: 'error', message: 'reactive requires intent.' };
+    }
+    const graph = normalizeReactiveGraph(intent.graph);
+    return graph.type === 'ok'
+      ? plannedOutcome({ type: 'reactive', intent: intent.intent.trim(), graph: graph.graph }, intent)
+      : { type: 'error', message: graph.message };
+  }
   return { type: 'error', message: 'Planner returned an unsupported intent type.' };
 }
 
@@ -491,6 +586,7 @@ export function buildPlanForIntent(ctx: BuildContext, intent: RobotIntent): Robo
     return buildRotateAnglePlan(ctx, intent.angleRad, intent.maxAngularRadps);
   }
   if (intent.type === 'sequence') return buildSequencePlan(ctx, intent.intent, intent.actions);
+  if (intent.type === 'reactive') return buildReactivePlan(ctx, intent.intent, intent.graph);
   return buildVelocityProfilePlan(ctx, intent.intent, intent.segments);
 }
 
@@ -591,6 +687,160 @@ function normalizeVelocityProfileAction(
   };
 }
 
+function normalizeReactiveGraph(
+  raw: unknown,
+): { type: 'ok'; graph: ReactiveGraph } | { type: 'error'; message: string } {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { type: 'error', message: 'reactive graph must be an object.' };
+  }
+  const graph = raw as Record<string, unknown>;
+  const durationMs = normalizeReactiveDuration(graph.durationMs);
+  const sources = normalizeReactiveSources(graph.sources);
+  if (sources.type === 'error') return sources;
+  const processors = normalizeReactiveProcessors(graph.processors, sources.nodes);
+  if (processors.type === 'error') return processors;
+  const outputs = normalizeReactiveOutputs(graph.outputs, sources.nodes, processors.nodes);
+  if (outputs.type === 'error') return outputs;
+  const safety = normalizeReactiveSafety(graph.safety);
+  if (safety.type === 'error') return safety;
+  if (outputs.nodes.some((output) => output.type === 'base.motionReactive')) {
+    safety.safety.requiresLease = ['base'];
+    safety.safety.stopOnObstacle = safety.safety.stopOnObstacle ?? true;
+  }
+  return {
+    type: 'ok',
+    graph: {
+      durationMs,
+      sources: sources.nodes,
+      processors: processors.nodes,
+      outputs: outputs.nodes,
+      safety: safety.safety,
+    },
+  };
+}
+
+function normalizeReactiveSources(
+  raw: unknown,
+): { type: 'ok'; nodes: ReactiveSourceNode[] } | { type: 'error'; message: string } {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return { type: 'error', message: 'reactive graph requires sources.' };
+  }
+  const nodes: ReactiveSourceNode[] = [];
+  const ids = new Set<string>();
+  for (const item of raw) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      return { type: 'error', message: 'reactive source must be an object.' };
+    }
+    const node = item as Record<string, unknown>;
+    const id = normalizeNodeId(node.id);
+    if (!id || ids.has(id)) return { type: 'error', message: 'reactive source id is invalid.' };
+    if (typeof node.type !== 'string' || !ALLOWED_REACTIVE_SOURCE_TYPES.has(node.type)) {
+      return { type: 'error', message: 'reactive source type is unsupported.' };
+    }
+    ids.add(id);
+    nodes.push({ id, type: 'audio.microphone', args: normalizeArgs(node.args) });
+  }
+  return { type: 'ok', nodes };
+}
+
+function normalizeReactiveProcessors(
+  raw: unknown,
+  sources: ReactiveSourceNode[],
+): { type: 'ok'; nodes: ReactiveProcessorNode[] } | { type: 'error'; message: string } {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return { type: 'error', message: 'reactive graph requires processors.' };
+  }
+  const knownIds = new Set(sources.map((source) => source.id));
+  const nodes: ReactiveProcessorNode[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      return { type: 'error', message: 'reactive processor must be an object.' };
+    }
+    const node = item as Record<string, unknown>;
+    const id = normalizeNodeId(node.id);
+    const input = normalizeNodeId(node.input);
+    if (!id || knownIds.has(id)) return { type: 'error', message: 'reactive processor id is invalid.' };
+    if (!input || !knownIds.has(input)) {
+      return { type: 'error', message: 'reactive processor input is invalid.' };
+    }
+    if (typeof node.type !== 'string' || !ALLOWED_REACTIVE_PROCESSOR_TYPES.has(node.type)) {
+      return { type: 'error', message: 'reactive processor type is unsupported.' };
+    }
+    knownIds.add(id);
+    nodes.push({
+      id,
+      type: node.type as ReactiveProcessorNode['type'],
+      input,
+      args: normalizeArgs(node.args),
+    });
+  }
+  return { type: 'ok', nodes };
+}
+
+function normalizeReactiveOutputs(
+  raw: unknown,
+  sources: ReactiveSourceNode[],
+  processors: ReactiveProcessorNode[],
+): { type: 'ok'; nodes: ReactiveOutputNode[] } | { type: 'error'; message: string } {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return { type: 'error', message: 'reactive graph requires outputs.' };
+  }
+  const knownIds = new Set([
+    ...sources.map((source) => source.id),
+    ...processors.map((processor) => processor.id),
+  ]);
+  const outputIds = new Set<string>();
+  const nodes: ReactiveOutputNode[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      return { type: 'error', message: 'reactive output must be an object.' };
+    }
+    const node = item as Record<string, unknown>;
+    const id = normalizeNodeId(node.id);
+    const input = normalizeNodeId(node.input);
+    if (!id || outputIds.has(id)) return { type: 'error', message: 'reactive output id is invalid.' };
+    if (!input || !knownIds.has(input)) {
+      return { type: 'error', message: 'reactive output input is invalid.' };
+    }
+    if (typeof node.type !== 'string' || !ALLOWED_REACTIVE_OUTPUT_TYPES.has(node.type)) {
+      return { type: 'error', message: 'reactive output type is unsupported.' };
+    }
+    const args = normalizeArgs(node.args);
+    if (node.type === 'base.motionReactive') {
+      args.maxSpeedMps = normalizeLinearSpeed(args.maxSpeedMps);
+      args.maxAngularRadps = normalizeAngularSpeed(args.maxAngularRadps);
+      args.style = typeof args.style === 'string' && args.style.trim() ? args.style.trim() : 'dance';
+    }
+    outputIds.add(id);
+    nodes.push({ id, type: node.type as ReactiveOutputNode['type'], input, args });
+  }
+  return { type: 'ok', nodes };
+}
+
+function normalizeReactiveSafety(
+  raw: unknown,
+): { type: 'ok'; safety: ReactiveSafety } | { type: 'error'; message: string } {
+  if (raw !== undefined && (!raw || typeof raw !== 'object' || Array.isArray(raw))) {
+    return { type: 'error', message: 'reactive safety must be an object.' };
+  }
+  const safety = (raw ?? {}) as Record<string, unknown>;
+  return {
+    type: 'ok',
+    safety: {
+      requiresLease: Array.isArray(safety.requiresLease)
+        ? safety.requiresLease.filter(
+            (resource): resource is 'base' | 'arm' => resource === 'base' || resource === 'arm',
+          )
+        : undefined,
+      stopOnObstacle: typeof safety.stopOnObstacle === 'boolean' ? safety.stopOnObstacle : undefined,
+      stopOnSilenceMs: normalizeStopOnSilenceMs(safety.stopOnSilenceMs),
+      startupNoInputMs: normalizeStartupNoInputMs(safety.startupNoInputMs),
+      maxSpeedMps: normalizeLinearSpeed(safety.maxSpeedMps),
+      maxAngularRadps: normalizeAngularSpeed(safety.maxAngularRadps),
+    },
+  };
+}
+
 function splitDistanceIntoSafeActions(
   distanceMeters: number,
   maxSpeedMps: number,
@@ -652,6 +902,31 @@ function plannedOutcome(intent: RobotIntent, raw: Record<string, unknown>): Robo
 
 function roundMotionValue(value: number): number {
   return Number(value.toFixed(6));
+}
+
+function normalizeReactiveDuration(value: unknown): number {
+  if (!isPositiveNumber(value)) return DEFAULT_REACTIVE_DURATION_MS;
+  return Math.round(Math.min(value, MAX_REACTIVE_DURATION_MS));
+}
+
+function normalizeStopOnSilenceMs(value: unknown): number {
+  if (!isPositiveNumber(value)) return DEFAULT_REACTIVE_STOP_ON_SILENCE_MS;
+  return Math.round(Math.min(Math.max(value, 1000), 30_000));
+}
+
+function normalizeStartupNoInputMs(value: unknown): number {
+  if (!isPositiveNumber(value)) return DEFAULT_REACTIVE_STARTUP_NO_INPUT_MS;
+  return Math.round(Math.min(Math.max(value, 1000), 30_000));
+}
+
+function normalizeNodeId(value: unknown): string {
+  return typeof value === 'string' && /^[a-z][a-z0-9_-]{0,31}$/u.test(value) ? value : '';
+}
+
+function normalizeArgs(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? { ...(value as Record<string, unknown>) }
+    : {};
 }
 
 function normalizeLinearSpeed(value: unknown): number {

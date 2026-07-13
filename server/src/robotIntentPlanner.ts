@@ -12,6 +12,7 @@ const MAX_LINEAR_SPEED_MPS = 0.5;
 const DEFAULT_LINEAR_SPEED_MPS = 0.2;
 const MAX_ANGULAR_SPEED_RADPS = 0.785398;
 const DEFAULT_ANGULAR_SPEED_RADPS = 0.349066;
+const MAX_REACTIVE_DURATION_MS = 120_000;
 
 export interface RobotIntentPlannerOptions {
   provider: HookProvider;
@@ -115,6 +116,7 @@ function buildRobotIntentPrompt(content: string, tools: Array<Record<string, unk
     '{"type":"rotateAngle","angleRad":number,"maxAngularRadps":number}',
     '{"type":"velocityProfile","intent":"short Chinese intent","segments":[{"linearX":number,"angularZ":number,"durationMs":number}]}',
     '{"type":"sequence","intent":"short Chinese intent","confirmationMessage":"polite Chinese confirmation question","actions":[{"type":"driveDistance","distanceMeters":number,"maxSpeedMps":number},{"type":"rotateAngle","angleRad":number,"maxAngularRadps":number},{"type":"velocityProfile","intent":"short Chinese intent","segments":[{"linearX":number,"angularZ":number,"durationMs":number}]}]}',
+    '{"type":"reactive","intent":"short Chinese intent","confirmationMessage":"polite Chinese confirmation question","graph":{"durationMs":number,"sources":[{"id":"mic","type":"audio.microphone","args":{}}],"processors":[{"id":"beat","type":"audio.beatTracker","input":"mic","args":{}}],"outputs":[{"id":"base","type":"base.motionReactive","input":"beat","args":{"style":"dance","maxSpeedMps":number,"maxAngularRadps":number}},{"id":"led","type":"led.reactivePattern","input":"beat","args":{"style":"cheerful"}}],"safety":{"requiresLease":["base"],"stopOnObstacle":true,"startupNoInputMs":number,"stopOnSilenceMs":number,"maxSpeedMps":number,"maxAngularRadps":number}}}',
     '{"type":"speech","text":"short text"}',
     '{"type":"led","mode":"short mode"}',
     '{"type":"rememberPoi","poiName":"place name"}',
@@ -128,6 +130,13 @@ function buildRobotIntentPrompt(content: string, tools: Array<Record<string, unk
     `- Default angular speed is ${DEFAULT_ANGULAR_SPEED_RADPS}rad/s (20deg/s). maxAngularRadps must be >0 and <=${MAX_ANGULAR_SPEED_RADPS}rad/s (45deg/s).`,
     '- For "快一点", "加速", or "速度快点", choose a higher safe speed up to the max. For "慢点", choose a lower speed.',
     '- Use velocityProfile for vague expressive motion such as dancing, shaking, celebration, forward/back patterns, or figure-eight.',
+    '- Use reactive for real-time microphone-driven compound behavior such as following music, clapping, singing, dancing to sound, flashing lights to music, or performing happily to music.',
+    '- For reactive, do not invent a separate business tool for dancing, lighting, or performance. Compose allowed graph nodes only.',
+    '- Reactive source types: audio.microphone.',
+    '- Reactive processor types: audio.beatTracker, audio.onsetDetector, audio.moodEstimator.',
+    '- Reactive output types: base.motionReactive, led.reactivePattern, speech.reactiveCue.',
+    `- Reactive durationMs must be >0 and <=${MAX_REACTIVE_DURATION_MS}. Default to 30000 if unspecified.`,
+    '- Reactive should wait for sound before moving. Use startupNoInputMs:5000 and stopOnSilenceMs:5000 unless the user asks otherwise.',
     '- Each velocityProfile segment must have abs(linearX) <= 0.5, abs(angularZ) <= 0.785398, durationMs > 0.',
     '- Total velocityProfile duration must be <= 20000ms.',
     '- Prefer conservative speeds and short durations.',
@@ -147,6 +156,10 @@ function buildRobotIntentPrompt(content: string, tools: Array<Record<string, unk
     'JSON: {"type":"rotateAngle","angleRad":6.283185307,"maxAngularRadps":0.785398}',
     'User: 让小车前前后后跳个舞',
     'JSON: {"type":"velocityProfile","intent":"前后摆动跳舞","segments":[{"linearX":0.15,"angularZ":0.4,"durationMs":700},{"linearX":-0.15,"angularZ":-0.4,"durationMs":700},{"linearX":0.15,"angularZ":-0.4,"durationMs":700},{"linearX":-0.15,"angularZ":0.4,"durationMs":700}]}',
+    'User: 让小车跟着音乐跳起舞来',
+    'JSON: {"type":"reactive","intent":"跟着麦克风听到的音乐跳舞","confirmationMessage":"我会打开小车麦克风，先等待音乐或拍子，再根据节拍实时控制底盘动作。请确认小车已架空或周围安全后再开始。","graph":{"durationMs":30000,"sources":[{"id":"mic","type":"audio.microphone","args":{"sampleRateHz":16000,"channel":"mono"}}],"processors":[{"id":"beat","type":"audio.beatTracker","input":"mic","args":{"features":["beat","tempo","energy","onset"],"latencyTargetMs":180}}],"outputs":[{"id":"base","type":"base.motionReactive","input":"beat","args":{"style":"dance","maxSpeedMps":0.35,"maxAngularRadps":0.6}}],"safety":{"requiresLease":["base"],"stopOnObstacle":true,"startupNoInputMs":5000,"stopOnSilenceMs":5000,"maxSpeedMps":0.35,"maxAngularRadps":0.6}}}',
+    'User: 跟着音乐闪灯',
+    'JSON: {"type":"reactive","intent":"跟着麦克风听到的音乐闪灯","confirmationMessage":"我会打开小车麦克风，先等待音乐或拍子，再根据节拍控制灯光变化。确认后开始。","graph":{"durationMs":30000,"sources":[{"id":"mic","type":"audio.microphone","args":{"sampleRateHz":16000,"channel":"mono"}}],"processors":[{"id":"beat","type":"audio.beatTracker","input":"mic","args":{"features":["beat","tempo","energy","onset"],"latencyTargetMs":180}}],"outputs":[{"id":"led","type":"led.reactivePattern","input":"beat","args":{"style":"cheerful","brightness":0.8}}],"safety":{"startupNoInputMs":5000,"stopOnSilenceMs":5000}}}',
     'User: 让小车进2m退1m再打个圈儿',
     'JSON: {"type":"sequence","intent":"前进2米、后退1米、旋转1圈","confirmationMessage":"我理解为先前进2米，再后退1米，最后原地旋转1圈。这个动作幅度比较大，请确认小车已架空或周围安全后再执行。","actions":[{"type":"driveDistance","distanceMeters":2,"maxSpeedMps":0.2},{"type":"driveDistance","distanceMeters":-1,"maxSpeedMps":0.2},{"type":"rotateAngle","angleRad":6.283185307,"maxAngularRadps":0.349066}]}',
     'User: 让小车进3m退2m再打个圈儿',
@@ -208,6 +221,10 @@ function validatePlannerIntent(intent: Record<string, unknown>): string | null {
     }
     return null;
   }
+  if (type === 'reactive') {
+    if (typeof intent.intent !== 'string' || !intent.intent.trim()) return 'reactive requires intent.';
+    return validateReactiveGraph(intent.graph);
+  }
   return 'Unsupported planner intent type.';
 }
 
@@ -249,6 +266,119 @@ function validateVelocityProfile(intent: Record<string, unknown>): string | null
     totalMs += Number(item.durationMs);
   }
   return totalMs <= 20_000 ? null : 'velocityProfile duration exceeds 20000ms.';
+}
+
+function validateReactiveGraph(raw: unknown): string | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return 'reactive graph must be an object.';
+  const graph = raw as Record<string, unknown>;
+  if (!validPositiveNumber(graph.durationMs) || Number(graph.durationMs) > MAX_REACTIVE_DURATION_MS) {
+    return `reactive durationMs must be >0 and <=${MAX_REACTIVE_DURATION_MS}.`;
+  }
+  const sourceIds = validateReactiveSources(graph.sources);
+  if (typeof sourceIds === 'string') return sourceIds;
+  const processorIds = validateReactiveProcessors(graph.processors, sourceIds);
+  if (typeof processorIds === 'string') return processorIds;
+  const outputs = validateReactiveOutputs(graph.outputs, new Set([...sourceIds, ...processorIds]));
+  if (outputs) return outputs;
+  return validateReactiveSafety(graph.safety);
+}
+
+function validateReactiveSources(raw: unknown): Set<string> | string {
+  if (!Array.isArray(raw) || raw.length === 0) return 'reactive graph requires sources.';
+  const ids = new Set<string>();
+  for (const item of raw) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return 'reactive source must be an object.';
+    const node = item as Record<string, unknown>;
+    if (!validNodeId(node.id) || ids.has(String(node.id))) return 'reactive source id is invalid.';
+    if (node.type !== 'audio.microphone') return 'reactive source type is unsupported.';
+    ids.add(String(node.id));
+  }
+  return ids;
+}
+
+function validateReactiveProcessors(raw: unknown, sourceIds: Set<string>): Set<string> | string {
+  if (!Array.isArray(raw) || raw.length === 0) return 'reactive graph requires processors.';
+  const knownIds = new Set(sourceIds);
+  const processorIds = new Set<string>();
+  for (const item of raw) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return 'reactive processor must be an object.';
+    const node = item as Record<string, unknown>;
+    if (!validNodeId(node.id) || knownIds.has(String(node.id))) return 'reactive processor id is invalid.';
+    if (!validNodeId(node.input) || !knownIds.has(String(node.input))) {
+      return 'reactive processor input is invalid.';
+    }
+    if (
+      node.type !== 'audio.beatTracker' &&
+      node.type !== 'audio.onsetDetector' &&
+      node.type !== 'audio.moodEstimator'
+    ) {
+      return 'reactive processor type is unsupported.';
+    }
+    knownIds.add(String(node.id));
+    processorIds.add(String(node.id));
+  }
+  return processorIds;
+}
+
+function validateReactiveOutputs(raw: unknown, knownIds: Set<string>): string | null {
+  if (!Array.isArray(raw) || raw.length === 0) return 'reactive graph requires outputs.';
+  const outputIds = new Set<string>();
+  for (const item of raw) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return 'reactive output must be an object.';
+    const node = item as Record<string, unknown>;
+    if (!validNodeId(node.id) || outputIds.has(String(node.id))) return 'reactive output id is invalid.';
+    if (!validNodeId(node.input) || !knownIds.has(String(node.input))) return 'reactive output input is invalid.';
+    if (
+      node.type !== 'base.motionReactive' &&
+      node.type !== 'led.reactivePattern' &&
+      node.type !== 'speech.reactiveCue'
+    ) {
+      return 'reactive output type is unsupported.';
+    }
+    if (node.type === 'base.motionReactive') {
+      const args = node.args && typeof node.args === 'object' && !Array.isArray(node.args)
+        ? (node.args as Record<string, unknown>)
+        : {};
+      if (!validOptionalPositiveNumber(args.maxSpeedMps, MAX_LINEAR_SPEED_MPS)) {
+        return `base.motionReactive maxSpeedMps must be >0 and <=${MAX_LINEAR_SPEED_MPS}.`;
+      }
+      if (!validOptionalPositiveNumber(args.maxAngularRadps, MAX_ANGULAR_SPEED_RADPS)) {
+        return `base.motionReactive maxAngularRadps must be >0 and <=${MAX_ANGULAR_SPEED_RADPS}.`;
+      }
+    }
+    outputIds.add(String(node.id));
+  }
+  return null;
+}
+
+function validateReactiveSafety(raw: unknown): string | null {
+  if (raw === undefined) return null;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return 'reactive safety must be an object.';
+  const safety = raw as Record<string, unknown>;
+  if (!validOptionalPositiveNumber(safety.maxSpeedMps, MAX_LINEAR_SPEED_MPS)) {
+    return `reactive safety maxSpeedMps must be >0 and <=${MAX_LINEAR_SPEED_MPS}.`;
+  }
+  if (!validOptionalPositiveNumber(safety.maxAngularRadps, MAX_ANGULAR_SPEED_RADPS)) {
+    return `reactive safety maxAngularRadps must be >0 and <=${MAX_ANGULAR_SPEED_RADPS}.`;
+  }
+  if (safety.stopOnSilenceMs !== undefined && !validPositiveNumber(safety.stopOnSilenceMs)) {
+    return 'reactive safety stopOnSilenceMs must be positive.';
+  }
+  if (safety.startupNoInputMs !== undefined && !validPositiveNumber(safety.startupNoInputMs)) {
+    return 'reactive safety startupNoInputMs must be positive.';
+  }
+  if (
+    safety.requiresLease !== undefined &&
+    (!Array.isArray(safety.requiresLease) ||
+      !safety.requiresLease.every((resource) => resource === 'base' || resource === 'arm'))
+  ) {
+    return 'reactive safety requiresLease is invalid.';
+  }
+  return null;
+}
+
+function validNodeId(value: unknown): boolean {
+  return typeof value === 'string' && /^[a-z][a-z0-9_-]{0,31}$/u.test(value);
 }
 
 function validNumber(value: unknown, absLimit: number): boolean {
