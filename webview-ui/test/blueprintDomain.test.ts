@@ -75,6 +75,37 @@ test('deleting a node removes dependent edges and clears child containment', () 
   assert.equal(state.present.edges.length, 0);
 });
 
+test('resizes a recognized node with minimum size protection', () => {
+  let state = createBlueprintHistoryState(createEmptyBlueprintDocument());
+  state = run(state, { type: 'node.create', node: moveNode });
+  state = run(state, { type: 'node.resize', nodeId: 'move', size: { width: 260, height: 150 } });
+  assert.deepEqual(state.present.nodes[0]?.size, { width: 260, height: 150 });
+  assert.throws(
+    () => run(state, { type: 'node.resize', nodeId: 'move', size: { width: 80, height: 60 } }),
+    /cannot be smaller/,
+  );
+});
+
+test('supports a start module as the source of the program flow', () => {
+  let state = createBlueprintHistoryState(createEmptyBlueprintDocument());
+  const start = node('start', 'start', '开始', 40, 180);
+  state = run(state, { type: 'node.create', node: start });
+  state = run(state, { type: 'node.create', node: moveNode });
+  state = run(state, {
+    type: 'edge.create',
+    edge: {
+      id: 'start-to-move',
+      sourceId: 'start',
+      targetId: 'move',
+      relation: 'trigger',
+      sourceStrokeIds: [],
+    },
+  });
+
+  assert.equal(state.present.nodes[0]?.kind, 'start');
+  assert.equal(state.present.edges[0]?.sourceId, 'start');
+});
+
 test('rejects invalid node containment and missing edge endpoints', () => {
   let state = createBlueprintHistoryState(createEmptyBlueprintDocument());
   state = run(state, { type: 'node.create', node: container });

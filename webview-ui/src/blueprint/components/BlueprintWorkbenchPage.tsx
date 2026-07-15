@@ -81,7 +81,7 @@ function BlueprintProject({
         <div className="engineering-brand">
           <Sparkle size={22} weight="fill" />
           <strong>总工程师工作台</strong>
-          <span>P1</span>
+          <span>P2</span>
         </div>
         <TaskPicker
           availableTasks={availableTasks}
@@ -110,12 +110,18 @@ function BlueprintProject({
 
       <ReactFlowProvider>
         <EngineeringCanvas
+          agents={blueprintFixtureCatalog.agents.filter(({ id }) =>
+            task.availableAgentIds.includes(id),
+          )}
           canRedo={history.future.length > 0}
           canUndo={history.past.length > 0}
           document={history.present}
           onCommand={onCommand}
           onRedo={() => dispatch({ type: 'history.redo' })}
           onUndo={() => dispatch({ type: 'history.undo' })}
+          tools={blueprintFixtureCatalog.tools.filter(({ id }) =>
+            task.availableToolIds.includes(id),
+          )}
         />
       </ReactFlowProvider>
     </main>

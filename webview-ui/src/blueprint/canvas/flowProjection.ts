@@ -5,6 +5,7 @@ import type { BlueprintDocument, BlueprintEdge, BlueprintNode } from '../domain/
 export interface BlueprintFlowNodeData extends Record<string, unknown> {
   label: string;
   kind: BlueprintNode['kind'];
+  assignmentStatus?: BlueprintDocument['assignments'][number]['status'];
 }
 
 export type BlueprintFlowNode = Node<BlueprintFlowNodeData>;
@@ -15,20 +16,36 @@ export interface BlueprintFlowProjection {
   edges: BlueprintFlowEdge[];
 }
 
-export function projectBlueprintToFlow(document: BlueprintDocument): BlueprintFlowProjection {
-  const orderedNodes = orderParentsBeforeChildren(document.nodes);
+export function projectBlueprintToFlow(
+  document: BlueprintDocument,
+  scopeId?: string | null,
+): BlueprintFlowProjection {
+  const scoped = scopeId === undefined
+    ? document.nodes
+    : document.nodes.filter((node) => (scopeId === null ? !node.parentId : node.parentId === scopeId));
+  const visibleIds = new Set(scoped.map(({ id }) => id));
+  const orderedNodes = orderParentsBeforeChildren(scoped);
+  const assignmentByNode = new Map(
+    document.assignments.map((assignment) => [assignment.nodeId, assignment]),
+  );
   return {
     nodes: orderedNodes.map((node) => ({
       id: node.id,
       type: node.kind,
-      position: toRelativePosition(node, document.nodes),
-      parentId: node.parentId,
-      extent: node.parentId ? 'parent' : undefined,
-      data: { label: node.label, kind: node.kind },
+      position: scopeId === undefined
+        ? toRelativePosition(node, document.nodes)
+        : toScopePosition(node, scopeId, document.nodes),
+      parentId: scopeId === undefined ? node.parentId : undefined,
+      extent: scopeId === undefined && node.parentId ? 'parent' : undefined,
+      data: {
+        label: node.label,
+        kind: node.kind,
+        assignmentStatus: assignmentByNode.get(node.id)?.status,
+      },
       style: { width: node.size.width, height: node.size.height },
       zIndex: node.kind === 'container' ? 0 : 2,
     })),
-    edges: document.edges.map((edge) => ({
+    edges: document.edges.filter((edge) => visibleIds.has(edge.sourceId) && visibleIds.has(edge.targetId)).map((edge) => ({
       id: edge.id,
       source: edge.sourceId,
       target: edge.targetId,
@@ -39,6 +56,28 @@ export function projectBlueprintToFlow(document: BlueprintDocument): BlueprintFl
       data: { relation: edge.relation },
     })),
   };
+}
+
+export function toScopePosition(
+  node: BlueprintNode,
+  scopeId: string | null,
+  nodes: BlueprintNode[],
+): XYPosition {
+  if (scopeId === null) return node.position;
+  const parent = nodes.find(({ id }) => id === scopeId);
+  if (!parent) return node.position;
+  return { x: node.position.x - parent.position.x, y: node.position.y - parent.position.y };
+}
+
+export function fromScopePosition(
+  position: XYPosition,
+  scopeId: string | null,
+  nodes: BlueprintNode[],
+): XYPosition {
+  if (scopeId === null) return position;
+  const parent = nodes.find(({ id }) => id === scopeId);
+  if (!parent) return position;
+  return { x: position.x + parent.position.x, y: position.y + parent.position.y };
 }
 
 export function toBlueprintPosition(

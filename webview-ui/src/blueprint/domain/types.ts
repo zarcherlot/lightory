@@ -1,5 +1,5 @@
 export type PointerKind = 'mouse' | 'touch' | 'pen';
-export type BlueprintNodeKind = 'function' | 'artifact' | 'container';
+export type BlueprintNodeKind = 'start' | 'function' | 'artifact' | 'container';
 export type BlueprintRelation = 'data' | 'trigger';
 export type StageGate = 'goal' | 'architecture' | 'assignment' | 'plan' | 'test';
 
@@ -80,6 +80,7 @@ export interface InkStroke {
   points: InkPoint[];
   pointerKind: PointerKind;
   createdAt: number;
+  scopeId?: string;
 }
 
 export interface BlueprintNode {
@@ -120,11 +121,29 @@ export type AgentAssignmentStatus =
   | 'accepted'
   | 'returned';
 
+export interface AgentTaskContract {
+  goal: string;
+  inputNodeIds: string[];
+  expectedOutputs: string[];
+  acceptanceCriteria: string[];
+  toolIds: string[];
+}
+
+export interface AgentRestatement {
+  summary: string;
+  understoodInputs: string[];
+  promisedOutputs: string[];
+  uncertainties: string[];
+}
+
 export interface AgentAssignment {
   id: string;
   nodeId: string;
   agentId: string;
   status: AgentAssignmentStatus;
+  contract: AgentTaskContract;
+  restatement?: AgentRestatement;
+  createdAt: number;
 }
 
 export interface AgentDelivery {
@@ -136,6 +155,15 @@ export interface AgentDelivery {
   uncertainties: string[];
   artifact: Record<string, unknown>;
   status: 'draft' | 'accepted' | 'returned';
+}
+
+export interface AssignmentReview {
+  id: string;
+  assignmentId: string;
+  deliveryId: string;
+  decision: 'accepted' | 'returned';
+  comment: string;
+  createdAt: number;
 }
 
 export interface DebugSession {
@@ -163,6 +191,7 @@ export interface BlueprintDocument {
   planSteps: PlanStep[];
   assignments: AgentAssignment[];
   deliveries: AgentDelivery[];
+  assignmentReviews: AssignmentReview[];
   debugSessions: DebugSession[];
   revisions: BlueprintRevision[];
 }

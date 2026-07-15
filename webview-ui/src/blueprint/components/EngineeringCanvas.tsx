@@ -6,6 +6,7 @@ import {
   Circle,
   CursorClick,
   Eraser,
+  House,
   PencilSimple,
   Rectangle,
   Trash,
@@ -30,12 +31,14 @@ import {
   BLUEPRINT_GRID_COLOR,
   BLUEPRINT_MINIMAP_MASK_COLOR,
 } from '../../constants.js';
-import { eraseStrokeSegments, findNodesIntersectingEraser } from '../canvas/eraseStrokes.js';
+import { createDraftAssignment } from '../agents/index.js';
+import { eraseStrokeSegments, findEdgesIntersectingEraser, findNodesIntersectingEraser } from '../canvas/eraseStrokes.js';
 import {
   type BlueprintFlowEdge,
   type BlueprintFlowNode,
+  fromScopePosition,
   projectBlueprintToFlow,
-  toBlueprintPosition,
+  toScopePosition,
 } from '../canvas/flowProjection.js';
 import { getInkSvgPath } from '../canvas/inkPath.js';
 import {
@@ -44,14 +47,20 @@ import {
 } from '../canvas/recognition/index.js';
 import type { BlueprintCommandInput } from '../domain/commands.js';
 import type {
+  AgentDefinition,
   BlueprintDocument,
   BlueprintNode,
   BlueprintNodeKind,
   BlueprintRelation,
   InkPoint,
   InkStroke,
+  ToolDefinition,
 } from '../domain/types.js';
-import { ArtifactNodeView, ContainerNodeView, FunctionNodeView } from './BlueprintNodeViews.js';
+import { AgentDetailPanel } from './AgentDetailPanel.js';
+import { AgentDock } from './AgentDock.js';
+import { AssignmentDrawer } from './AssignmentDrawer.js';
+import { BlueprintNodeActionsContext } from './BlueprintNodeActions.js';
+import { ArtifactNodeView, ContainerNodeView, FunctionNodeView, StartNodeView } from './BlueprintNodeViews.js';
 
 export type CanvasTool = 'select' | 'pen' | 'eraser' | 'connector';
 
@@ -59,6 +68,8 @@ interface EngineeringCanvasProps {
   document: BlueprintDocument;
   canUndo: boolean;
   canRedo: boolean;
+  agents: AgentDefinition[];
+  tools: ToolDefinition[];
   onCommand: (command: BlueprintCommandInput) => void;
   onUndo: () => void;
   onRedo: () => void;
@@ -71,6 +82,7 @@ interface PendingConnection {
 }
 
 const nodeTypes = {
+  start: StartNodeView,
   function: FunctionNodeView,
   artifact: ArtifactNodeView,
   container: ContainerNodeView,
@@ -81,7 +93,11 @@ const recognizer = new WebGeometryInkRecognizer();
 export function EngineeringCanvas(props: EngineeringCanvasProps) {
   const { screenToFlowPosition, flowToScreenPosition } = useReactFlow();
   const [activeTool, setActiveTool] = useState<CanvasTool>('pen');
-  const projection = useMemo(() => projectBlueprintToFlow(props.document), [props.document]);
+  const [currentScopeId, setCurrentScopeId] = useState<string | null>(null);
+  const projection = useMemo(() => projectBlueprintToFlow(props.document, currentScopeId), [currentScopeId, props.document]);
+  const visibleNodes = useMemo(() => props.document.nodes
+    .filter((node) => currentScopeId === null ? !node.parentId : node.parentId === currentScopeId)
+    .map((node) => ({ ...node, position: toScopePosition(node, currentScopeId, props.document.nodes) })), [currentScopeId, props.document.nodes]);
   const [flowNodes, setFlowNodes] = useState<BlueprintFlowNode[]>(projection.nodes);
   const [candidate, setCandidate] = useState<RecognitionCandidate | null>(null);
   const [candidateLabel, setCandidateLabel] = useState('');
@@ -98,10 +114,18 @@ export function EngineeringCanvas(props: EngineeringCanvasProps) {
     label: string;
     kind: BlueprintNodeKind;
   } | null>(null);
+  const [agentDockExpanded, setAgentDockExpanded] = useState(true);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [agentDetailOpen, setAgentDetailOpen] = useState(false);
+  const [activeAssignmentId, setActiveAssignmentId] = useState<string | null>(null);
+  const [assignmentNotice, setAssignmentNotice] = useState<string | null>(null);
   const pendingStrokesRef = useRef<InkStroke[]>([]);
   const recognitionTimerRef = useRef<number | null>(null);
 
   useEffect(() => setFlowNodes(projection.nodes), [projection.nodes]);
+  useEffect(() => {
+    if (currentScopeId && !props.document.nodes.some(({ id, kind }) => id === currentScopeId && kind === 'container')) setCurrentScopeId(null);
+  }, [currentScopeId, props.document.nodes]);
   useEffect(() => {
     if (!candidate) return;
     if (candidate.kind === 'ellipse') setCandidateLabel('线索卡');
@@ -144,10 +168,10 @@ export function EngineeringCanvas(props: EngineeringCanvasProps) {
       props.onCommand({
         type: 'node.move',
         nodeId: node.id,
-        position: toBlueprintPosition(node.id, node.position, props.document),
+        position: fromScopePosition(node.position, currentScopeId, props.document.nodes),
       });
     },
-    [props],
+    [currentScopeId, props],
   );
 
   const handleStrokeComplete = useCallback(
@@ -174,19 +198,20 @@ export function EngineeringCanvas(props: EngineeringCanvasProps) {
       const node: BlueprintNode = {
         id,
         kind,
-        label: candidateLabel.trim(),
-        position: { x: bounds.x, y: bounds.y },
+        label: kind === 'start' && candidateLabel.trim() === '新模块' ? '开始' : candidateLabel.trim(),
+        position: fromScopePosition({ x: bounds.x, y: bounds.y }, currentScopeId, props.document.nodes),
         size: {
-          width: Math.max(kind === 'artifact' ? 130 : 170, bounds.width),
-          height: Math.max(kind === 'artifact' ? 130 : 110, bounds.height),
+          width: Math.max(kind === 'artifact' ? 130 : kind === 'start' ? 140 : 170, bounds.width),
+          height: Math.max(kind === 'artifact' ? 130 : kind === 'start' ? 90 : 110, bounds.height),
         },
         sourceStrokeIds: [],
         recognition: { source: 'web', confidence: candidate.confidence },
+        ...(currentScopeId ? { parentId: currentScopeId } : {}),
       };
       props.onCommand({ type: 'node.create', node });
 
       if (kind === 'container') {
-        for (const child of props.document.nodes) {
+        for (const child of props.document.nodes.filter((item) => item.parentId === currentScopeId || (!currentScopeId && !item.parentId))) {
           if (isNodeInside(child, node)) {
             props.onCommand({ type: 'node.set-parent', nodeId: child.id, parentId: id });
           }
@@ -197,21 +222,24 @@ export function EngineeringCanvas(props: EngineeringCanvasProps) {
       }
       setCandidate(null);
     },
-    [candidate, candidateLabel, props],
+    [candidate, candidateLabel, currentScopeId, props],
   );
 
   const connectRecognizedArrow = useCallback(() => {
     if (!candidate?.line) return;
-    const source = findNodeAtPoint(candidate.line.start, props.document.nodes);
-    const target = findNodeAtPoint(candidate.line.end, props.document.nodes);
-    if (!source || !target || source.id === target.id) return;
+    const source = findNodeAtPoint(candidate.line.start, visibleNodes);
+    const target = findNodeAtPoint(candidate.line.end, visibleNodes);
+    if (!source || !target || source.id === target.id) {
+      setAssignmentNotice('连线两端需要落在两个不同模块上，请调整后重试。');
+      return;
+    }
     setPendingConnection({
       sourceId: source.id,
       targetId: target.id,
       sourceStrokeIds: candidate.strokeIds,
     });
     setCandidate(null);
-  }, [candidate, props.document.nodes]);
+  }, [candidate, visibleNodes]);
 
   const confirmConnection = useCallback(
     (relation: BlueprintRelation) => {
@@ -234,15 +262,83 @@ export function EngineeringCanvas(props: EngineeringCanvasProps) {
     [pendingConnection, props],
   );
 
-  const candidateScreenPosition = candidate?.bounds
-    ? flowToScreenPosition({
-        x: candidate.bounds.x + candidate.bounds.width / 2,
-        y: candidate.bounds.y + candidate.bounds.height,
-      })
-    : null;
+  const assignAgentToNode = useCallback(
+    (agentId: string, nodeId: string) => {
+      const agent = props.agents.find(({ id }) => id === agentId);
+      const node = props.document.nodes.find(({ id }) => id === nodeId);
+      if (!agent || !node) return;
+      if (node.kind !== 'function') {
+        setAssignmentNotice('Agent 只能分配给功能模块，不能分配给成果或子系统。');
+        return;
+      }
+      const existing = props.document.assignments.find(
+        (assignment) =>
+          assignment.agentId === agentId &&
+          assignment.nodeId === nodeId &&
+          assignment.status !== 'accepted',
+      );
+      if (existing) {
+        setActiveAssignmentId(existing.id);
+        setSelectedAgentId(null);
+        setAgentDetailOpen(false);
+        return;
+      }
+      try {
+        const assignment = createDraftAssignment(
+          createId('assignment'),
+          { agent, node, availableTools: props.tools },
+          Date.now(),
+        );
+        props.onCommand({ type: 'assignment.create', assignment });
+        setActiveAssignmentId(assignment.id);
+        setSelectedAgentId(null);
+        setAgentDetailOpen(false);
+        setAssignmentNotice(null);
+      } catch (error) {
+        setAssignmentNotice(error instanceof Error ? error.message : '无法分配这个 Agent。');
+      }
+    },
+    [props],
+  );
+
+  const candidateBottomPosition = candidate?.bounds ? flowToScreenPosition({
+    x: candidate.bounds.x + candidate.bounds.width / 2,
+    y: candidate.bounds.y + candidate.bounds.height,
+  }) : null;
+  const candidatePlaceAbove = Boolean(candidateBottomPosition && candidateBottomPosition.y > window.innerHeight - 300);
+  const candidateScreenPosition = candidate?.bounds ? flowToScreenPosition({
+    x: candidate.bounds.x + candidate.bounds.width / 2,
+    y: candidatePlaceAbove ? candidate.bounds.y : candidate.bounds.y + candidate.bounds.height,
+  }) : null;
+  const currentScope = currentScopeId ? props.document.nodes.find(({ id }) => id === currentScopeId) : undefined;
 
   return (
-    <div className="engineering-canvas-shell">
+    <div
+      className={`engineering-canvas-shell ${agentDockExpanded ? 'is-agent-dock-expanded' : ''}`}
+      onDragOver={(event) => {
+        if (event.dataTransfer.types.includes('application/x-lightory-agent')) {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = 'copy';
+        }
+      }}
+      onDrop={(event) => {
+        const agentId = event.dataTransfer.getData('application/x-lightory-agent');
+        if (!agentId) return;
+        event.preventDefault();
+        const dropElement =
+          event.target instanceof Element ? event.target.closest('.react-flow__node') : null;
+        const dropNodeId = dropElement instanceof HTMLElement ? dropElement.dataset.id : undefined;
+        const point = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+        const node =
+          props.document.nodes.find(({ id }) => id === dropNodeId) ??
+          findNodeAtPoint(point, visibleNodes, false);
+        if (!node) {
+          setAssignmentNotice('请把 Agent 放到一个功能模块上。');
+          return;
+        }
+        assignAgentToNode(agentId, node.id);
+      }}
+    >
       <CanvasToolbar
         activeTool={activeTool}
         canRedo={props.canRedo}
@@ -252,6 +348,11 @@ export function EngineeringCanvas(props: EngineeringCanvasProps) {
         onSelectTool={setActiveTool}
         onUndo={props.onUndo}
       />
+      <div className="engineering-scope-breadcrumb">
+        <button onClick={() => setCurrentScopeId(null)} type="button"><House size={16} /> 工程总图</button>
+        {currentScope && <><span>/</span><strong>{currentScope.label}</strong><button className="is-edit" onClick={() => setEditingNode({ id: currentScope.id, label: currentScope.label, kind: currentScope.kind })} type="button">编辑子系统</button></>}
+      </div>
+      <BlueprintNodeActionsContext.Provider value={{ onResize: (nodeId, size) => props.onCommand({ type: 'node.resize', nodeId, size }) }}>
       <ReactFlow<BlueprintFlowNode, BlueprintFlowEdge>
         colorMode="dark"
         deleteKeyCode={['Backspace', 'Delete']}
@@ -268,7 +369,18 @@ export function EngineeringCanvas(props: EngineeringCanvasProps) {
         onNodeDragStop={handleNodeDragStop}
         onNodeDoubleClick={(_event, flowNode) => {
           const node = props.document.nodes.find(({ id }) => id === flowNode.id);
-          if (node) setEditingNode({ id: node.id, label: node.label, kind: node.kind });
+          if (node?.kind === 'container') setCurrentScopeId(node.id);
+          else if (node) setEditingNode({ id: node.id, label: node.label, kind: node.kind });
+        }}
+        onNodeClick={(_event, flowNode) => {
+          if (selectedAgentId) {
+            assignAgentToNode(selectedAgentId, flowNode.id);
+            return;
+          }
+          const assignment = props.document.assignments
+            .filter(({ nodeId }) => nodeId === flowNode.id)
+            .sort((a, b) => b.createdAt - a.createdAt)[0];
+          if (assignment) setActiveAssignmentId(assignment.id);
         }}
         onNodesChange={handleNodesChange}
         onNodesDelete={(nodes) =>
@@ -292,28 +404,33 @@ export function EngineeringCanvas(props: EngineeringCanvasProps) {
         />
         <Controls className="engineering-controls" showInteractive={false} />
         <ViewportPortal>
-          <InkRenderer currentStroke={currentStroke} document={props.document} />
+          <InkRenderer currentScopeId={currentScopeId} currentStroke={currentStroke} document={props.document} />
           {connectorDraft && (
             <ConnectorPreview start={connectorDraft.start} end={connectorDraft.end} />
           )}
         </ViewportPortal>
       </ReactFlow>
+      </BlueprintNodeActionsContext.Provider>
 
       <InkCaptureLayer
         active={activeTool === 'pen'}
         currentStroke={currentStroke}
         onChange={setCurrentStroke}
         onComplete={handleStrokeComplete}
+        scopeId={currentScopeId}
         screenToFlowPosition={screenToFlowPosition}
       />
 
       <EraserCaptureLayer
         active={activeTool === 'eraser'}
         onErase={(eraserPath) => {
-          const hitNodes = findNodesIntersectingEraser(props.document.nodes, eraserPath, 20);
+          const hitNodes = findNodesIntersectingEraser(visibleNodes, eraserPath, 20);
+          const hitNodeIds = new Set(hitNodes.map(({ id }) => id));
+          const hitEdges = findEdgesIntersectingEraser(projection.edges.map((edge) => props.document.edges.find(({ id }) => id === edge.id)!).filter(Boolean), visibleNodes, eraserPath, 20)
+            .filter((edge) => !hitNodeIds.has(edge.sourceId) && !hitNodeIds.has(edge.targetId));
           const nodeStrokeIds = new Set(hitNodes.flatMap(({ sourceStrokeIds }) => sourceStrokeIds));
           const replacements = eraseStrokeSegments(
-            props.document.strokes.filter(({ id }) => !nodeStrokeIds.has(id)),
+            props.document.strokes.filter(({ id, scopeId }) => scopeId === (currentScopeId ?? undefined) && !nodeStrokeIds.has(id)),
             eraserPath,
             20,
             () => createId('stroke'),
@@ -322,6 +439,7 @@ export function EngineeringCanvas(props: EngineeringCanvasProps) {
             props.onCommand({ type: 'stroke.delete', strokeId });
           }
           for (const node of hitNodes) props.onCommand({ type: 'node.delete', nodeId: node.id });
+          for (const edge of hitEdges) props.onCommand({ type: 'edge.delete', edgeId: edge.id });
           if (replacements.length > 0) props.onCommand({ type: 'stroke.replace', replacements });
         }}
         screenToFlowPosition={screenToFlowPosition}
@@ -330,7 +448,7 @@ export function EngineeringCanvas(props: EngineeringCanvasProps) {
       <ConnectorCaptureLayer
         active={activeTool === 'connector'}
         draft={connectorDraft}
-        nodes={props.document.nodes}
+        nodes={visibleNodes}
         onChange={setConnectorDraft}
         onComplete={(sourceId, targetId) => {
           setPendingConnection({ sourceId, targetId, sourceStrokeIds: [] });
@@ -347,7 +465,8 @@ export function EngineeringCanvas(props: EngineeringCanvasProps) {
           onCreateNode={createNodeFromCandidate}
           onDismiss={() => setCandidate(null)}
           onLabelChange={setCandidateLabel}
-          style={{ left: candidateScreenPosition.x, top: candidateScreenPosition.y }}
+          placeAbove={candidatePlaceAbove}
+          style={{ left: Math.max(180, Math.min(window.innerWidth - 180, candidateScreenPosition.x)), top: candidateScreenPosition.y }}
         />
       )}
 
@@ -408,6 +527,55 @@ export function EngineeringCanvas(props: EngineeringCanvasProps) {
           }}
         />
       )}
+
+      <AgentDock
+        agents={props.agents}
+        assignments={props.document.assignments}
+        expanded={agentDockExpanded}
+        nodes={props.document.nodes}
+        onBeginDrag={() => setActiveTool('select')}
+        onOpenAssignment={setActiveAssignmentId}
+        onSelectAgent={(agentId) => {
+          setSelectedAgentId(agentId);
+          setAgentDetailOpen(Boolean(agentId));
+          if (agentId) setActiveTool('select');
+        }}
+        onToggle={() => setAgentDockExpanded((expanded) => !expanded)}
+        selectedAgentId={selectedAgentId}
+      />
+
+      {assignmentNotice && (
+        <button
+          className="engineering-assignment-notice"
+          onClick={() => setAssignmentNotice(null)}
+          type="button"
+        >
+          {assignmentNotice}
+        </button>
+      )}
+
+      {activeAssignmentId &&
+        (() => {
+          const assignment = props.document.assignments.find(({ id }) => id === activeAssignmentId);
+          const agent = assignment
+            ? props.agents.find(({ id }) => id === assignment.agentId)
+            : undefined;
+          return assignment && agent ? (
+            <AssignmentDrawer
+              agent={agent}
+              assignment={assignment}
+              document={props.document}
+              onClose={() => setActiveAssignmentId(null)}
+              onCommand={props.onCommand}
+              tools={props.tools}
+            />
+          ) : null;
+        })()}
+      {!activeAssignmentId && selectedAgentId && agentDetailOpen && (() => {
+        const index = props.agents.findIndex(({ id }) => id === selectedAgentId);
+        const agent = props.agents[index];
+        return agent ? <AgentDetailPanel agent={agent} agentIndex={index} tools={props.tools} onClose={() => setAgentDetailOpen(false)} /> : null;
+      })()}
     </div>
   );
 }
@@ -480,12 +648,14 @@ function InkCaptureLayer({
   onChange,
   onComplete,
   screenToFlowPosition,
+  scopeId,
 }: {
   active: boolean;
   currentStroke: InkStroke | null;
   onChange: (stroke: InkStroke | null) => void;
   onComplete: (stroke: InkStroke) => void;
   screenToFlowPosition: (point: { x: number; y: number }) => { x: number; y: number };
+  scopeId: string | null;
 }) {
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!active || event.button !== 0) return;
@@ -494,6 +664,7 @@ function InkCaptureLayer({
       id: createId('stroke'),
       pointerKind: normalizePointerKind(event.pointerType),
       createdAt: Date.now(),
+      ...(scopeId ? { scopeId } : {}),
       points: [toInkPoint(event.nativeEvent, screenToFlowPosition)],
     });
   };
@@ -659,15 +830,17 @@ function ConnectorPreview({
 function InkRenderer({
   document,
   currentStroke,
+  currentScopeId,
 }: {
   document: BlueprintDocument;
   currentStroke: InkStroke | null;
+  currentScopeId: string | null;
 }) {
   const consumed = new Set([
     ...document.nodes.flatMap(({ sourceStrokeIds }) => sourceStrokeIds),
     ...document.edges.flatMap(({ sourceStrokeIds }) => sourceStrokeIds),
   ]);
-  const visibleStrokes = document.strokes.filter((stroke) => !consumed.has(stroke.id));
+  const visibleStrokes = document.strokes.filter((stroke) => stroke.scopeId === (currentScopeId ?? undefined) && !consumed.has(stroke.id));
   const strokes = currentStroke ? [...visibleStrokes, currentStroke] : visibleStrokes;
   return (
     <svg className="engineering-ink-viewport" aria-hidden="true">
@@ -694,6 +867,7 @@ function NodeEditDialog({
   onCancel: () => void;
 }) {
   const kinds: Array<{ id: BlueprintNodeKind; label: string }> = [
+    { id: 'start', label: '开始模块' },
     { id: 'function', label: '功能模块' },
     { id: 'artifact', label: '成果节点' },
     { id: 'container', label: '子系统' },
@@ -748,6 +922,7 @@ function RecognitionCard({
   onCreateNode,
   onConnectArrow,
   onDismiss,
+  placeAbove,
 }: {
   candidate: RecognitionCandidate;
   label: string;
@@ -756,10 +931,11 @@ function RecognitionCard({
   onCreateNode: (kind: BlueprintNodeKind) => void;
   onConnectArrow: () => void;
   onDismiss: () => void;
+  placeAbove: boolean;
 }) {
   const confidence = Math.round(candidate.confidence * 100);
   return (
-    <div className="engineering-recognition-card" role="dialog" style={style}>
+    <div className={`engineering-recognition-card ${placeAbove ? 'is-above' : ''}`} role="dialog" style={style}>
       <div>
         <strong>识别候选：{recognitionLabel(candidate.kind)}</strong>
         <span className={candidate.confidence >= 0.85 ? 'is-confident' : ''}>{confidence}%</span>
@@ -773,6 +949,13 @@ function RecognitionCard({
           <div className="engineering-recognition-actions">
             {candidate.kind === 'rectangle' ? (
               <>
+                <button
+                  disabled={!label.trim()}
+                  onClick={() => onCreateNode('start')}
+                  type="button"
+                >
+                  开始模块
+                </button>
                 <button
                   disabled={!label.trim()}
                   onClick={() => onCreateNode('function')}
@@ -812,6 +995,9 @@ function RecognitionCard({
             <input value={label} onChange={(event) => onLabelChange(event.target.value)} />
           </label>
           <div className="engineering-recognition-actions">
+            <button disabled={!label.trim()} onClick={() => onCreateNode('start')} type="button">
+              开始模块
+            </button>
             <button disabled={!label.trim()} onClick={() => onCreateNode('function')} type="button">
               功能模块
             </button>
@@ -830,7 +1016,7 @@ function RecognitionCard({
             </button>
           </div>
         </>
-      ) : candidate.kind === 'arrow' ? (
+      ) : candidate.kind === 'arrow' || candidate.kind === 'line' ? (
         <div className="engineering-recognition-actions">
           <button onClick={onConnectArrow} type="button">
             建立连接
@@ -839,14 +1025,7 @@ function RecognitionCard({
             保留笔迹
           </button>
         </div>
-      ) : (
-        <div className="engineering-recognition-actions">
-          <span>直线已识别，画出箭头或使用连线工具建立关系。</span>
-          <button className="is-ghost" onClick={onDismiss} type="button">
-            知道了
-          </button>
-        </div>
-      )}
+      ) : null}
     </div>
   );
 }

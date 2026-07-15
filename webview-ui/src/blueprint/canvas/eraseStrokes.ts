@@ -1,6 +1,24 @@
 import type { StrokeReplacement } from '../domain/commands.js';
 import type { InkPoint, InkStroke } from '../domain/types.js';
-import type { BlueprintNode } from '../domain/types.js';
+import type { BlueprintEdge, BlueprintNode } from '../domain/types.js';
+
+export function findEdgesIntersectingEraser(
+  edges: BlueprintEdge[],
+  nodes: BlueprintNode[],
+  eraserPath: Array<{ x: number; y: number }>,
+  radius: number,
+): BlueprintEdge[] {
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const samples = resamplePath(eraserPath, Math.max(2, radius / 2));
+  return edges.filter((edge) => {
+    const source = nodeById.get(edge.sourceId);
+    const target = nodeById.get(edge.targetId);
+    if (!source || !target) return false;
+    const start = { x: source.position.x + source.size.width / 2, y: source.position.y + source.size.height / 2 };
+    const end = { x: target.position.x + target.size.width / 2, y: target.position.y + target.size.height / 2 };
+    return samples.some((point) => distanceToSegment(point, start, end) <= radius);
+  });
+}
 
 export function findNodesIntersectingEraser(
   nodes: BlueprintNode[],

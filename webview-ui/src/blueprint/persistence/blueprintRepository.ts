@@ -1,4 +1,4 @@
-import { isBlueprintDocument } from '../domain/document.js';
+import { isBlueprintDocument, migrateBlueprintDocument } from '../domain/document.js';
 import type { BlueprintDocument } from '../domain/types.js';
 
 export interface BlueprintRepository {
@@ -24,10 +24,7 @@ export class LocalStorageBlueprintRepository implements BlueprintRepository {
   private readonly storage: StorageLike;
   private readonly keyPrefix: string;
 
-  constructor(
-    storage: StorageLike,
-    keyPrefix = 'lightory.blueprint.v1',
-  ) {
+  constructor(storage: StorageLike, keyPrefix = 'lightory.blueprint.v1') {
     this.storage = storage;
     this.keyPrefix = keyPrefix;
   }
@@ -53,7 +50,7 @@ export class LocalStorageBlueprintRepository implements BlueprintRepository {
     if (serialized === null) return null;
 
     try {
-      const parsed = JSON.parse(serialized) as unknown;
+      const parsed = migrateBlueprintDocument(JSON.parse(serialized) as unknown);
       if (!isBlueprintDocument(parsed)) {
         throw new BlueprintRepositoryError(
           `Stored blueprint project ${projectId} is not a blueprint/v1 document.`,

@@ -38,7 +38,10 @@ test('round-trips blueprint/v1 without losing strokes or revision history', asyn
 
 test('rejects corrupted persisted documents', async () => {
   const storage = new MemoryStorage();
-  storage.setItem('lightory.blueprint.v1:broken', JSON.stringify({ schemaVersion: 'blueprint/v2' }));
+  storage.setItem(
+    'lightory.blueprint.v1:broken',
+    JSON.stringify({ schemaVersion: 'blueprint/v2' }),
+  );
   storage.setItem(
     'lightory.blueprint.v1:malformed-node',
     JSON.stringify({ ...createEmptyBlueprintDocument(), nodes: [null] }),
@@ -47,6 +50,17 @@ test('rejects corrupted persisted documents', async () => {
 
   await assert.rejects(() => repository.load('broken'), BlueprintRepositoryError);
   await assert.rejects(() => repository.load('malformed-node'), BlueprintRepositoryError);
+});
+
+test('migrates a valid P1 document by adding P2 review collections', async () => {
+  const storage = new MemoryStorage();
+  const legacy = createEmptyBlueprintDocument() as unknown as Record<string, unknown>;
+  delete legacy.assignmentReviews;
+  storage.setItem('lightory.blueprint.v1:legacy', JSON.stringify(legacy));
+  const repository = new LocalStorageBlueprintRepository(storage);
+
+  const loaded = await repository.load('legacy');
+  assert.deepEqual(loaded?.assignmentReviews, []);
 });
 
 class MemoryStorage implements StorageLike {

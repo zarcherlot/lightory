@@ -9,8 +9,34 @@ export function createEmptyBlueprintDocument(): BlueprintDocument {
     planSteps: [],
     assignments: [],
     deliveries: [],
+    assignmentReviews: [],
     debugSessions: [],
     revisions: [],
+  };
+}
+
+export function migrateBlueprintDocument(value: unknown): unknown {
+  if (!isRecord(value) || value.schemaVersion !== 'blueprint/v1') return value;
+  const assignments = Array.isArray(value.assignments)
+    ? value.assignments.map((assignment) => {
+        if (!isRecord(assignment)) return assignment;
+        return {
+          ...assignment,
+          contract: assignment.contract ?? {
+            goal: '',
+            inputNodeIds: [],
+            expectedOutputs: [],
+            acceptanceCriteria: [],
+            toolIds: [],
+          },
+          createdAt: assignment.createdAt ?? 0,
+        };
+      })
+    : value.assignments;
+  return {
+    ...value,
+    assignments,
+    assignmentReviews: Array.isArray(value.assignmentReviews) ? value.assignmentReviews : [],
   };
 }
 
@@ -29,6 +55,7 @@ export function validateBlueprintDocument(value: unknown): string[] {
     'planSteps',
     'assignments',
     'deliveries',
+    'assignmentReviews',
     'debugSessions',
     'revisions',
   ] as const;
@@ -45,6 +72,7 @@ export function validateBlueprintDocument(value: unknown): string[] {
   validateUniqueIds(document.planSteps, 'plan step', issues);
   validateUniqueIds(document.assignments, 'assignment', issues);
   validateUniqueIds(document.deliveries, 'delivery', issues);
+  validateUniqueIds(document.assignmentReviews, 'assignment review', issues);
   validateUniqueIds(document.debugSessions, 'debug session', issues);
   validateUniqueIds(document.revisions, 'revision', issues);
 
@@ -75,7 +103,8 @@ export function validateBlueprintDocument(value: unknown): string[] {
       issues.push(`Node ${node.id} references missing parent ${node.parentId}.`);
     }
     for (const strokeId of node.sourceStrokeIds) {
-      if (!strokeIds.has(strokeId)) issues.push(`Node ${node.id} references missing stroke ${strokeId}.`);
+      if (!strokeIds.has(strokeId))
+        issues.push(`Node ${node.id} references missing stroke ${strokeId}.`);
     }
   }
 
@@ -84,10 +113,13 @@ export function validateBlueprintDocument(value: unknown): string[] {
       issues.push(`Edge ${readId(edge)} is malformed.`);
       continue;
     }
-    if (!nodeIds.has(edge.sourceId)) issues.push(`Edge ${edge.id} has missing source ${edge.sourceId}.`);
-    if (!nodeIds.has(edge.targetId)) issues.push(`Edge ${edge.id} has missing target ${edge.targetId}.`);
+    if (!nodeIds.has(edge.sourceId))
+      issues.push(`Edge ${edge.id} has missing source ${edge.sourceId}.`);
+    if (!nodeIds.has(edge.targetId))
+      issues.push(`Edge ${edge.id} has missing target ${edge.targetId}.`);
     for (const strokeId of edge.sourceStrokeIds) {
-      if (!strokeIds.has(strokeId)) issues.push(`Edge ${edge.id} references missing stroke ${strokeId}.`);
+      if (!strokeIds.has(strokeId))
+        issues.push(`Edge ${edge.id} references missing stroke ${strokeId}.`);
     }
   }
 
@@ -99,7 +131,8 @@ export function validateBlueprintDocument(value: unknown): string[] {
     if (!isNonEmptyString(step.nodeId) || !nodeIds.has(step.nodeId)) {
       issues.push(`Plan step ${step.id} references missing node ${String(step.nodeId)}.`);
     }
-    if (typeof step.checkpoint !== 'boolean') issues.push(`Plan step ${step.id} has invalid checkpoint.`);
+    if (typeof step.checkpoint !== 'boolean')
+      issues.push(`Plan step ${step.id} has invalid checkpoint.`);
   }
 
   for (const assignment of document.assignments) {
@@ -118,7 +151,26 @@ export function validateBlueprintDocument(value: unknown): string[] {
       continue;
     }
     if (!assignmentIds.has(delivery.assignmentId)) {
-      issues.push(`Delivery ${delivery.id} references missing assignment ${delivery.assignmentId}.`);
+      issues.push(
+        `Delivery ${delivery.id} references missing assignment ${delivery.assignmentId}.`,
+      );
+    }
+  }
+
+  for (const review of document.assignmentReviews) {
+    if (!isAssignmentReview(review)) {
+      issues.push(`Assignment review ${readId(review)} is malformed.`);
+      continue;
+    }
+    if (!assignmentIds.has(review.assignmentId)) {
+      issues.push(
+        `Assignment review ${review.id} references missing assignment ${review.assignmentId}.`,
+      );
+    }
+    if (!deliveryIds.has(review.deliveryId)) {
+      issues.push(
+        `Assignment review ${review.id} references missing delivery ${review.deliveryId}.`,
+      );
     }
   }
 
@@ -151,7 +203,7 @@ function isBlueprintNode(value: unknown): boolean {
   const recognition = value.recognition;
   return (
     isNonEmptyString(value.id) &&
-    ['function', 'artifact', 'container'].includes(String(value.kind)) &&
+    ['start', 'function', 'artifact', 'container'].includes(String(value.kind)) &&
     typeof value.label === 'string' &&
     isPoint(value.position) &&
     isSize(value.size) &&
@@ -181,9 +233,38 @@ function isAssignment(value: unknown): boolean {
     isNonEmptyString(value.id) &&
     isNonEmptyString(value.nodeId) &&
     isNonEmptyString(value.agentId) &&
-    ['draft', 'awaiting-confirmation', 'working', 'awaiting-review', 'accepted', 'returned'].includes(
-      String(value.status),
-    )
+    [
+      'draft',
+      'awaiting-confirmation',
+      'working',
+      'awaiting-review',
+      'accepted',
+      'returned',
+    ].includes(String(value.status)) &&
+    isAgentTaskContract(value.contract) &&
+    (value.restatement === undefined || isAgentRestatement(value.restatement)) &&
+    isFiniteNumber(value.createdAt)
+  );
+}
+
+function isAgentTaskContract(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.goal === 'string' &&
+    isStringArray(value.inputNodeIds) &&
+    isStringArray(value.expectedOutputs) &&
+    isStringArray(value.acceptanceCriteria) &&
+    isStringArray(value.toolIds)
+  );
+}
+
+function isAgentRestatement(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    isNonEmptyString(value.summary) &&
+    isStringArray(value.understoodInputs) &&
+    isStringArray(value.promisedOutputs) &&
+    isStringArray(value.uncertainties)
   );
 }
 
@@ -199,6 +280,19 @@ function isDelivery(value: unknown): boolean {
     isStringArray(value.uncertainties) &&
     isRecord(value.artifact) &&
     ['draft', 'accepted', 'returned'].includes(String(value.status))
+  );
+}
+
+function isAssignmentReview(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    isNonEmptyString(value.id) &&
+    isNonEmptyString(value.assignmentId) &&
+    isNonEmptyString(value.deliveryId) &&
+    ['accepted', 'returned'].includes(String(value.decision)) &&
+    typeof value.comment === 'string' &&
+    (value.decision !== 'returned' || isNonEmptyString(value.comment)) &&
+    isFiniteNumber(value.createdAt)
   );
 }
 

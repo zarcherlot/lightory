@@ -118,6 +118,7 @@ export function applyBlueprintCommand(
         planSteps: [],
         assignments: [],
         deliveries: [],
+        assignmentReviews: [],
         debugSessions: [],
       };
       break;
@@ -162,6 +163,18 @@ export function applyBlueprintCommand(
         })),
       };
       break;
+    case 'node.resize':
+      if (command.size.width < 96 || command.size.height < 72) {
+        throw new Error('Blueprint nodes cannot be smaller than 96 × 72.');
+      }
+      next = {
+        ...document,
+        nodes: replaceNode(document.nodes, command.nodeId, (node) => ({
+          ...node,
+          size: command.size,
+        })),
+      };
+      break;
     case 'node.set-parent':
       validateNodeParent(document.nodes, command.nodeId, command.parentId);
       next = {
@@ -189,6 +202,113 @@ export function applyBlueprintCommand(
     case 'edge.delete':
       assertItemExists(document.edges, command.edgeId, 'edge');
       next = { ...document, edges: document.edges.filter((edge) => edge.id !== command.edgeId) };
+      break;
+    case 'assignment.create': {
+      assertUniqueId(document.assignments, command.assignment.id, 'assignment');
+      const node = document.nodes.find(({ id }) => id === command.assignment.nodeId);
+      if (!node) throw new Error(`Unknown node: ${command.assignment.nodeId}.`);
+      if (node.kind !== 'function')
+        throw new Error('Agents can only be assigned to function nodes.');
+      if (command.assignment.status !== 'draft') throw new Error('A new assignment must be draft.');
+      const duplicate = document.assignments.some(
+        (assignment) =>
+          assignment.nodeId === command.assignment.nodeId &&
+          assignment.agentId === command.assignment.agentId &&
+          assignment.status !== 'accepted',
+      );
+      if (duplicate) throw new Error('This agent already has an active assignment on this node.');
+      next = { ...document, assignments: [...document.assignments, command.assignment] };
+      break;
+    }
+    case 'assignment.contract-update':
+      next = {
+        ...document,
+        assignments: replaceAssignment(document.assignments, command.assignmentId, (assignment) => {
+          assertAssignmentStatus(assignment.status, ['draft', 'awaiting-confirmation']);
+          return {
+            ...assignment,
+            contract: command.contract,
+            status: 'draft',
+            restatement: undefined,
+          };
+        }),
+      };
+      break;
+    case 'assignment.restatement-submit':
+      next = {
+        ...document,
+        assignments: replaceAssignment(document.assignments, command.assignmentId, (assignment) => {
+          assertAssignmentStatus(assignment.status, ['draft']);
+          assertCompleteContract(assignment.contract);
+          return {
+            ...assignment,
+            restatement: command.restatement,
+            status: 'awaiting-confirmation',
+          };
+        }),
+      };
+      break;
+    case 'assignment.confirm':
+      next = {
+        ...document,
+        assignments: replaceAssignment(document.assignments, command.assignmentId, (assignment) => {
+          assertAssignmentStatus(assignment.status, ['awaiting-confirmation']);
+          if (!assignment.restatement)
+            throw new Error('Agent restatement is required before confirmation.');
+          return { ...assignment, status: 'working' };
+        }),
+      };
+      break;
+    case 'assignment.reopen':
+      next = {
+        ...document,
+        assignments: replaceAssignment(document.assignments, command.assignmentId, (assignment) => {
+          assertAssignmentStatus(assignment.status, ['accepted']);
+          return { ...assignment, status: 'draft', restatement: undefined };
+        }),
+      };
+      break;
+    case 'assignment.delivery-submit':
+      assertUniqueId(document.deliveries, command.delivery.id, 'delivery');
+      if (command.delivery.assignmentId !== command.assignmentId) {
+        throw new Error('Delivery assignment does not match command assignment.');
+      }
+      next = {
+        ...document,
+        assignments: replaceAssignment(document.assignments, command.assignmentId, (assignment) => {
+          assertAssignmentStatus(assignment.status, ['working']);
+          return { ...assignment, status: 'awaiting-review' };
+        }),
+        deliveries: [...document.deliveries, command.delivery],
+      };
+      break;
+    case 'assignment.accept':
+      next = reviewDelivery(
+        document,
+        command.assignmentId,
+        command.deliveryId,
+        command.review,
+        'accepted',
+      );
+      break;
+    case 'assignment.return':
+      if (!command.review.comment.trim()) throw new Error('Return comment cannot be empty.');
+      next = reviewDelivery(
+        document,
+        command.assignmentId,
+        command.deliveryId,
+        command.review,
+        'returned',
+      );
+      break;
+    case 'assignment.resubmit':
+      next = {
+        ...document,
+        assignments: replaceAssignment(document.assignments, command.assignmentId, (assignment) => {
+          assertAssignmentStatus(assignment.status, ['returned']);
+          return { ...assignment, restatement: command.restatement, status: 'working' };
+        }),
+      };
       break;
   }
 
@@ -224,8 +344,86 @@ function deleteNode(document: BlueprintDocument, nodeId: string): BlueprintDocum
     planSteps: document.planSteps.filter((step) => step.nodeId !== nodeId),
     assignments: document.assignments.filter((assignment) => !assignmentIds.has(assignment.id)),
     deliveries: document.deliveries.filter((delivery) => !deliveryIds.has(delivery.id)),
+    assignmentReviews: document.assignmentReviews.filter(
+      (review) => !assignmentIds.has(review.assignmentId),
+    ),
     debugSessions: document.debugSessions.filter((session) => !deliveryIds.has(session.deliveryId)),
   };
+}
+
+function reviewDelivery(
+  document: BlueprintDocument,
+  assignmentId: string,
+  deliveryId: string,
+  review: BlueprintDocument['assignmentReviews'][number],
+  decision: 'accepted' | 'returned',
+): BlueprintDocument {
+  assertUniqueId(document.assignmentReviews, review.id, 'assignment review');
+  if (
+    review.assignmentId !== assignmentId ||
+    review.deliveryId !== deliveryId ||
+    review.decision !== decision
+  ) {
+    throw new Error('Assignment review does not match the reviewed delivery.');
+  }
+  const delivery = document.deliveries.find(({ id }) => id === deliveryId);
+  if (!delivery || delivery.assignmentId !== assignmentId) {
+    throw new Error(`Unknown delivery: ${deliveryId}.`);
+  }
+  const latestVersion = Math.max(
+    ...document.deliveries
+      .filter((item) => item.assignmentId === assignmentId)
+      .map(({ version }) => version),
+  );
+  if (delivery.version !== latestVersion || delivery.status !== 'draft') {
+    throw new Error('Only the latest draft delivery can be reviewed.');
+  }
+  return {
+    ...document,
+    assignments: replaceAssignment(document.assignments, assignmentId, (assignment) => {
+      assertAssignmentStatus(assignment.status, ['awaiting-review']);
+      return { ...assignment, status: decision };
+    }),
+    deliveries: document.deliveries.map((item) =>
+      item.id === deliveryId ? { ...item, status: decision } : item,
+    ),
+    assignmentReviews: [...document.assignmentReviews, review],
+  };
+}
+
+function replaceAssignment(
+  assignments: BlueprintDocument['assignments'],
+  assignmentId: string,
+  transform: (
+    assignment: BlueprintDocument['assignments'][number],
+  ) => BlueprintDocument['assignments'][number],
+): BlueprintDocument['assignments'] {
+  assertItemExists(assignments, assignmentId, 'assignment');
+  return assignments.map((assignment) =>
+    assignment.id === assignmentId ? transform(assignment) : assignment,
+  );
+}
+
+function assertAssignmentStatus(
+  status: BlueprintDocument['assignments'][number]['status'],
+  allowed: Array<BlueprintDocument['assignments'][number]['status']>,
+): void {
+  if (!allowed.includes(status)) {
+    throw new Error(`Assignment status ${status} cannot perform this transition.`);
+  }
+}
+
+function assertCompleteContract(
+  contract: BlueprintDocument['assignments'][number]['contract'],
+): void {
+  if (
+    !contract.goal.trim() ||
+    contract.expectedOutputs.length === 0 ||
+    contract.acceptanceCriteria.length === 0 ||
+    contract.toolIds.length === 0
+  ) {
+    throw new Error('Assignment contract is incomplete.');
+  }
 }
 
 function validateNodeParent(nodes: BlueprintNode[], nodeId: string, parentId?: string): void {

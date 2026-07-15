@@ -4,6 +4,7 @@ import { test } from 'vitest';
 
 import {
   eraseStrokeSegments,
+  findEdgesIntersectingEraser,
   findNodesIntersectingEraser,
 } from '../src/blueprint/canvas/eraseStrokes.js';
 import {
@@ -95,6 +96,19 @@ test('projects containers before children and converts child drag positions', ()
   });
 });
 
+test('projects the root and a subsystem as separate canvas pages', () => {
+  const container = makeNode('system', 'container', 100, 80, 500, 320);
+  const child = { ...makeNode('move', 'function', 180, 150, 160, 100), parentId: 'system' };
+  const root = makeNode('voice', 'function', 700, 100, 160, 100);
+  const document = { ...createEmptyBlueprintDocument(), nodes: [container, child, root] };
+
+  assert.deepEqual(projectBlueprintToFlow(document, null).nodes.map(({ id }) => id), ['system', 'voice']);
+  const subsystem = projectBlueprintToFlow(document, 'system');
+  assert.deepEqual(subsystem.nodes.map(({ id }) => id), ['move']);
+  assert.deepEqual(subsystem.nodes[0]?.position, { x: 80, y: 70 });
+  assert.equal(subsystem.nodes[0]?.parentId, undefined);
+});
+
 test('eraser splits only the crossed part of an ink stroke', () => {
   let sequence = 0;
   const replacements = eraseStrokeSegments(
@@ -124,6 +138,25 @@ test('eraser detects a recognized module crossed by the gesture', () => {
     matches.map(({ id }) => id),
     ['move'],
   );
+});
+
+test('eraser detects a connection between two modules', () => {
+  const move = makeNode('move', 'function', 100, 100, 180, 120);
+  const voice = makeNode('voice', 'function', 420, 100, 180, 120);
+  const edge = {
+    id: 'edge',
+    sourceId: 'move',
+    targetId: 'voice',
+    relation: 'data' as const,
+    sourceStrokeIds: [],
+  };
+  const matches = findEdgesIntersectingEraser(
+    [edge],
+    [move, voice],
+    [point(350, 120, 0), point(350, 200, 1)],
+    20,
+  );
+  assert.deepEqual(matches.map(({ id }) => id), ['edge']);
 });
 
 function makeNode(

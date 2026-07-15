@@ -1,4 +1,14 @@
-import type { BlueprintEdge, BlueprintNode, BlueprintRevision, InkStroke } from './types.js';
+import type {
+  AgentAssignment,
+  AgentDelivery,
+  AgentRestatement,
+  AgentTaskContract,
+  AssignmentReview,
+  BlueprintEdge,
+  BlueprintNode,
+  BlueprintRevision,
+  InkStroke,
+} from './types.js';
 
 interface CommandMetadata {
   revision: BlueprintRevision;
@@ -27,10 +37,50 @@ export type BlueprintCommand =
       nodeId: string;
       position: BlueprintNode['position'];
     })
+  | (CommandMetadata & {
+      type: 'node.resize';
+      nodeId: string;
+      size: BlueprintNode['size'];
+    })
   | (CommandMetadata & { type: 'node.set-parent'; nodeId: string; parentId?: string })
   | (CommandMetadata & { type: 'node.delete'; nodeId: string })
   | (CommandMetadata & { type: 'edge.create'; edge: BlueprintEdge })
-  | (CommandMetadata & { type: 'edge.delete'; edgeId: string });
+  | (CommandMetadata & { type: 'edge.delete'; edgeId: string })
+  | (CommandMetadata & { type: 'assignment.create'; assignment: AgentAssignment })
+  | (CommandMetadata & {
+      type: 'assignment.contract-update';
+      assignmentId: string;
+      contract: AgentTaskContract;
+    })
+  | (CommandMetadata & {
+      type: 'assignment.restatement-submit';
+      assignmentId: string;
+      restatement: AgentRestatement;
+    })
+  | (CommandMetadata & { type: 'assignment.confirm'; assignmentId: string })
+  | (CommandMetadata & { type: 'assignment.reopen'; assignmentId: string })
+  | (CommandMetadata & {
+      type: 'assignment.delivery-submit';
+      assignmentId: string;
+      delivery: AgentDelivery;
+    })
+  | (CommandMetadata & {
+      type: 'assignment.accept';
+      assignmentId: string;
+      deliveryId: string;
+      review: AssignmentReview;
+    })
+  | (CommandMetadata & {
+      type: 'assignment.return';
+      assignmentId: string;
+      deliveryId: string;
+      review: AssignmentReview;
+    })
+  | (CommandMetadata & {
+      type: 'assignment.resubmit';
+      assignmentId: string;
+      restatement: AgentRestatement;
+    });
 
 export type BlueprintCommandInput = {
   [Type in BlueprintCommand['type']]: Omit<Extract<BlueprintCommand, { type: Type }>, 'revision'>;
