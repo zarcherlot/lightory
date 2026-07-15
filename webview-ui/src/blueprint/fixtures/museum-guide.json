@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "lightory-task/v1",
+  "id": "museum-guide",
+  "version": "1.0.0",
+  "title": "博物馆导览",
+  "story": "设计一个能让小车到达展品位置后再开始讲解的导览系统。",
+  "goalPrompt": "怎样证明小车是在正确的展品前开始讲解？",
+  "availableToolIds": ["voice", "basic-movement"],
+  "availableAgentIds": ["route-engineer", "voice-engineer"],
+  "stageGates": ["goal", "architecture", "assignment", "plan", "test"],
+  "testScenarioIds": ["museum-guide-basic"],
+  "faultScenarioIds": ["museum-voice-wrong-order"],
+  "successCriteria": [
+    "孩子定义了到达展品和开始讲解的判断标准",
+    "语音步骤依赖移动完成",
+    "孩子根据事件证据修复一次 Agent 错误并复验成功"
+  ]
+}
