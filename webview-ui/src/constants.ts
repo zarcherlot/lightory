@@ -56,6 +56,12 @@ export const ROLE_WEATHER_DISPLAY_SEC = 8;
 export const ROLE_BUSY_ICON_FRAME_SEC = 0.55;
 export const FALLBACK_FLOOR_COLOR = '#808080';
 
+// ── Blueprint Workbench Colors (JS-rendered library props) ──
+export const BLUEPRINT_GRID_COLOR = '#123b59';
+export const BLUEPRINT_MINIMAP_MASK_COLOR = 'rgba(2, 10, 24, 0.72)';
+export const BLUEPRINT_FUNCTION_NODE_COLOR = '#39d9ff';
+export const BLUEPRINT_ARTIFACT_NODE_COLOR = '#a78bfa';
+
 // ── Rendering - Overlay Colors (canvas, not CSS) ─────────────
 export const SEAT_OWN_COLOR = 'rgba(0, 127, 212, 0.35)';
 export const SEAT_AVAILABLE_COLOR = 'rgba(0, 200, 80, 0.35)';

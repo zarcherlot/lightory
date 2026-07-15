@@ -9,6 +9,7 @@ export interface BlueprintHistoryState {
 
 export type BlueprintHistoryAction =
   | { type: 'command'; command: BlueprintCommand }
+  | { type: 'document.replace'; document: BlueprintDocument }
   | { type: 'history.undo' }
   | { type: 'history.redo' };
 
@@ -20,6 +21,10 @@ export function blueprintHistoryReducer(
   state: BlueprintHistoryState,
   action: BlueprintHistoryAction,
 ): BlueprintHistoryState {
+  if (action.type === 'document.replace') {
+    return createBlueprintHistoryState(action.document);
+  }
+
   if (action.type === 'history.undo') {
     const previous = state.past.at(-1);
     if (!previous) return state;
@@ -55,11 +60,89 @@ export function applyBlueprintCommand(
   let next: BlueprintDocument;
 
   switch (command.type) {
+    case 'stroke.add':
+      assertUniqueId(document.strokes, command.stroke.id, 'stroke');
+      next = { ...document, strokes: [...document.strokes, command.stroke] };
+      break;
+    case 'stroke.delete':
+      assertItemExists(document.strokes, command.strokeId, 'stroke');
+      next = {
+        ...document,
+        strokes: document.strokes.filter((stroke) => stroke.id !== command.strokeId),
+        nodes: document.nodes.map((node) => ({
+          ...node,
+          sourceStrokeIds: node.sourceStrokeIds.filter((id) => id !== command.strokeId),
+        })),
+        edges: document.edges.map((edge) => ({
+          ...edge,
+          sourceStrokeIds: edge.sourceStrokeIds.filter((id) => id !== command.strokeId),
+        })),
+      };
+      break;
+    case 'stroke.replace': {
+      const replacementBySource = new Map(
+        command.replacements.map((replacement) => [replacement.sourceStrokeId, replacement]),
+      );
+      for (const replacement of command.replacements) {
+        assertItemExists(document.strokes, replacement.sourceStrokeId, 'stroke');
+      }
+      const replacementIds = command.replacements.flatMap(({ strokes }) =>
+        strokes.map(({ id }) => id),
+      );
+      if (new Set(replacementIds).size !== replacementIds.length) {
+        throw new Error('Replacement stroke ids must be unique.');
+      }
+
+      next = {
+        ...document,
+        strokes: document.strokes.flatMap(
+          (stroke) => replacementBySource.get(stroke.id)?.strokes ?? [stroke],
+        ),
+        nodes: document.nodes.map((node) => ({
+          ...node,
+          sourceStrokeIds: replaceStrokeReferences(node.sourceStrokeIds, replacementBySource),
+        })),
+        edges: document.edges.map((edge) => ({
+          ...edge,
+          sourceStrokeIds: replaceStrokeReferences(edge.sourceStrokeIds, replacementBySource),
+        })),
+      };
+      break;
+    }
+    case 'document.clear':
+      next = {
+        ...document,
+        strokes: [],
+        nodes: [],
+        edges: [],
+        planSteps: [],
+        assignments: [],
+        deliveries: [],
+        debugSessions: [],
+      };
+      break;
     case 'node.create':
       assertUniqueId(document.nodes, command.node.id, 'node');
       validateNodeParent(document.nodes, command.node.id, command.node.parentId);
       next = { ...document, nodes: [...document.nodes, command.node] };
       break;
+    case 'node.update': {
+      assertNonEmpty(command.label, 'Node label');
+      const changingFromContainer =
+        document.nodes.find((node) => node.id === command.nodeId)?.kind === 'container' &&
+        command.kind !== 'container';
+      next = {
+        ...document,
+        nodes: replaceNode(document.nodes, command.nodeId, (node) => ({
+          ...node,
+          label: command.label.trim(),
+          kind: command.kind,
+        })).map((node) =>
+          changingFromContainer && node.parentId === command.nodeId ? withoutParent(node) : node,
+        ),
+      };
+      break;
+    }
     case 'node.rename':
       assertNonEmpty(command.label, 'Node label');
       next = {
@@ -112,6 +195,15 @@ export function applyBlueprintCommand(
   return { ...next, revisions: [...next.revisions, command.revision] };
 }
 
+function replaceStrokeReferences(
+  sourceIds: string[],
+  replacementBySource: Map<string, { strokes: Array<{ id: string }> }>,
+): string[] {
+  return sourceIds.flatMap(
+    (id) => replacementBySource.get(id)?.strokes.map((stroke) => stroke.id) ?? [id],
+  );
+}
+
 function deleteNode(document: BlueprintDocument, nodeId: string): BlueprintDocument {
   assertNodeExists(document.nodes, nodeId);
   const assignmentIds = new Set(
@@ -128,15 +220,11 @@ function deleteNode(document: BlueprintDocument, nodeId: string): BlueprintDocum
     nodes: document.nodes
       .filter((node) => node.id !== nodeId)
       .map((node) => (node.parentId === nodeId ? withoutParent(node) : node)),
-    edges: document.edges.filter(
-      (edge) => edge.sourceId !== nodeId && edge.targetId !== nodeId,
-    ),
+    edges: document.edges.filter((edge) => edge.sourceId !== nodeId && edge.targetId !== nodeId),
     planSteps: document.planSteps.filter((step) => step.nodeId !== nodeId),
     assignments: document.assignments.filter((assignment) => !assignmentIds.has(assignment.id)),
     deliveries: document.deliveries.filter((delivery) => !deliveryIds.has(delivery.id)),
-    debugSessions: document.debugSessions.filter(
-      (session) => !deliveryIds.has(session.deliveryId),
-    ),
+    debugSessions: document.debugSessions.filter((session) => !deliveryIds.has(session.deliveryId)),
   };
 }
 

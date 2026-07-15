@@ -4,14 +4,20 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import App from './App.tsx';
+import { BlueprintWorkbenchRoute } from './blueprint/components/BlueprintWorkbenchRoute.tsx';
 import { BlueprintWorkbench } from './design-lab/BlueprintWorkbench.tsx';
 
-const isBlueprintDesignLab = window.location.pathname.endsWith(
-  '/design-lab/blueprint-workbench',
-);
+const isBlueprintWorkbench = window.location.pathname.endsWith('/blueprint/workbench');
+const isBlueprintDesignLab = window.location.pathname.endsWith('/design-lab/blueprint-workbench');
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    {isBlueprintDesignLab ? <BlueprintWorkbench /> : <App />}
+    {isBlueprintWorkbench ? (
+      <BlueprintWorkbenchRoute />
+    ) : isBlueprintDesignLab ? (
+      <BlueprintWorkbench />
+    ) : (
+      <App />
+    )}
   </StrictMode>,
 );

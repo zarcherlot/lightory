@@ -73,6 +73,7 @@ scripts/       Build and development utilities
 
 Important files:
 
+- `docs/lightory-blueprint-mvp-spec.md` - sole implementation specification for the current child chief-engineer blueprint prototype
 - `docs/agent-education-ux-requirements.md` - product UX requirements
 - `webview-ui/src/components/EducationModeOverlay.tsx` - education workflow overlay
 - `webview-ui/src/roles.ts` - role definitions, ability cards, and icon slots

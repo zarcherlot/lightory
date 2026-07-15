@@ -107,6 +107,15 @@ function browserMockAssetsPlugin(): Plugin {
 
 export default defineConfig({
   plugins: [tailwindcss(), react(), browserMockAssetsPlugin()],
+  resolve: {
+    // The monorepo root contains React 17 through AsyncAPI tooling. Keep every
+    // webview dependency, including Zustand inside React Flow, on React 19.
+    dedupe: ['react', 'react-dom'],
+    alias: {
+      react: path.resolve(__dirname, 'node_modules/react'),
+      'react-dom': path.resolve(__dirname, 'node_modules/react-dom'),
+    },
+  },
   build: {
     outDir: '../dist/webview',
     emptyOutDir: true,

@@ -1,0 +1,235 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" role="img" aria-labelledby="title desc">
+  <title id="title">Lightory Agent 可视化与智能小车控制软件架构 V2</title>
+  <desc id="desc">以分层架构和编号数据流展示云端 LLM、Pad、通信通道、Robot 安全执行与双向状态回传。</desc>
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="4" stdDeviation="9" flood-color="#172033" flood-opacity="0.08"/>
+    </filter>
+    <marker id="orangeArrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto" markerUnits="strokeWidth"><path d="M0 0L7 3.5L0 7Z" fill="#C85A12"/></marker>
+    <marker id="blueArrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto" markerUnits="strokeWidth"><path d="M0 0L7 3.5L0 7Z" fill="#2A72D4"/></marker>
+    <marker id="greenArrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto" markerUnits="strokeWidth"><path d="M0 0L7 3.5L0 7Z" fill="#16897D"/></marker>
+    <marker id="purpleArrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto" markerUnits="strokeWidth"><path d="M0 0L7 3.5L0 7Z" fill="#8A77AD"/></marker>
+    <style>
+      text { font-family: "Noto Sans CJK SC", "Microsoft YaHei", "PingFang SC", Arial, sans-serif; fill: #172033; letter-spacing: 0; }
+      .title { font-size: 36px; font-weight: 700; }
+      .subtitle { font-size: 17px; fill: #5B6679; }
+      .zoneTitle { font-size: 24px; font-weight: 700; fill: #FFFFFF; }
+      .zoneSub { font-size: 14px; fill: #E7EFFA; }
+      .layer { font-size: 14px; font-weight: 700; fill: #596579; }
+      .module { font-size: 18px; font-weight: 700; }
+      .detail { font-size: 13px; fill: #637087; }
+      .tiny { font-size: 12px; fill: #637087; }
+      .step { font-size: 13px; font-weight: 700; fill: #FFFFFF; }
+      .laneTitle { font-size: 16px; font-weight: 700; }
+      .laneText { font-size: 13px; fill: #596579; }
+      .whiteTitle { font-size: 18px; font-weight: 700; fill: #FFFFFF; }
+      .whiteDetail { font-size: 13px; fill: #D8DFEA; }
+      .legendTitle { font-size: 15px; font-weight: 700; }
+      .legendText { font-size: 13px; fill: #596579; }
+      .transportTitle { font-size: 19px; font-weight: 700; fill: #FFFFFF; }
+      .transportSub { font-size: 12px; fill: #E0E5EC; }
+    </style>
+  </defs>
+
+  <rect width="1920" height="1080" fill="#F6F8FB"/>
+  <rect width="1920" height="8" fill="#2A72D4"/>
+  <text x="60" y="58" class="title">Lightory Agent 可视化与智能小车控制软件架构</text>
+  <text x="60" y="90" class="subtitle">V2 · 分层视图与双向数据流</text>
+  <g transform="translate(1630,39)">
+    <rect width="230" height="46" rx="8" fill="#E9F1FC"/>
+    <rect x="15" y="13" width="20" height="20" rx="4" fill="#2A72D4"/>
+    <rect x="20" y="18" width="4" height="4" fill="#FFFFFF"/><rect x="27" y="18" width="4" height="4" fill="#FFFFFF"/><rect x="20" y="25" width="11" height="3" fill="#FFFFFF"/>
+    <text x="45" y="29" font-size="15" font-weight="700">LIGHTORY · ARCHITECTURE</text>
+  </g>
+
+  <!-- External cloud LLM -->
+  <g filter="url(#shadow)">
+    <rect x="400" y="118" width="510" height="108" rx="8" fill="#FFFFFF" stroke="#7651B5" stroke-width="2"/>
+  </g>
+  <circle cx="448" cy="172" r="28" fill="#F0EBF9"/>
+  <path d="M433 175c-7-14 8-22 18-15 7-12 25-6 24 7 11 1 13 17 1 20h-39c-10-1-12-12-4-12z" fill="none" stroke="#7651B5" stroke-width="3" stroke-linejoin="round"/>
+  <text x="490" y="157" class="module">云端 LLM 服务</text>
+  <text x="490" y="182" class="detail">意图理解 · 推理 · 对话反馈 · 计划辅助生成</text>
+  <text x="490" y="205" class="tiny">通过 HTTPS / Streaming API 访问，模型不部署在 Pad 内</text>
+  <rect x="794" y="136" width="92" height="28" rx="8" fill="#F0EBF9"/><text x="840" y="155" text-anchor="middle" font-size="13" font-weight="700" fill="#6541A5">外部云服务</text>
+
+  <!-- User input -->
+  <g filter="url(#shadow)"><rect x="35" y="356" width="142" height="174" rx="8" fill="#FFFFFF" stroke="#D0D5DD"/></g>
+  <circle cx="106" cy="397" r="23" fill="#E9F1FC"/>
+  <circle cx="106" cy="390" r="7" fill="#2A72D4"/><path d="M91 413c3-12 27-12 30 0" fill="none" stroke="#2A72D4" stroke-width="4" stroke-linecap="round"/>
+  <text x="106" y="448" text-anchor="middle" class="module">用户</text>
+  <text x="106" y="475" text-anchor="middle" class="detail">自然语言指令</text>
+  <text x="106" y="498" text-anchor="middle" class="detail">确认 / 急停</text>
+
+  <!-- Pad zone -->
+  <g filter="url(#shadow)">
+    <rect x="200" y="270" width="690" height="360" rx="8" fill="#FFFFFF"/>
+    <rect x="200" y="270" width="690" height="66" rx="8" fill="#2A72D4"/><rect x="200" y="328" width="690" height="8" fill="#2A72D4"/>
+  </g>
+  <text x="228" y="311" class="zoneTitle">PAD / 上位机</text>
+  <text x="390" y="311" class="zoneSub">理解、编排与受限计划生成</text>
+
+  <!-- Pad layer headers -->
+  <rect x="224" y="353" width="198" height="32" rx="8" fill="#E9F1FC"/><text x="323" y="374" text-anchor="middle" class="layer">交互层</text>
+  <rect x="438" y="353" width="198" height="32" rx="8" fill="#F0EBF9"/><text x="537" y="374" text-anchor="middle" class="layer">智能编排层</text>
+  <rect x="652" y="353" width="214" height="32" rx="8" fill="#E9F1FC"/><text x="759" y="374" text-anchor="middle" class="layer">计划生成层</text>
+
+  <!-- Pad modules -->
+  <rect x="224" y="397" width="198" height="190" rx="8" fill="#F4F8FE" stroke="#A9C9F2" stroke-width="1.5"/>
+  <rect x="244" y="417" width="34" height="34" rx="6" fill="#2A72D4"/>
+  <rect x="252" y="425" width="7" height="7" fill="#FFFFFF"/><rect x="263" y="425" width="7" height="7" fill="#FFFFFF"/><rect x="252" y="436" width="7" height="7" fill="#FFFFFF"/><rect x="263" y="436" width="7" height="7" fill="#FFFFFF" opacity="0.55"/>
+  <text x="290" y="440" class="module">Lightory UI</text>
+  <text x="244" y="476" class="detail">Agent 沙盒可视化</text>
+  <text x="244" y="500" class="detail">用户指令与解释</text>
+  <text x="244" y="524" class="detail">高风险动作确认</text>
+  <rect x="244" y="543" width="64" height="26" rx="8" fill="#FDEBEC"/><text x="276" y="561" text-anchor="middle" font-size="13" font-weight="700" fill="#B4232C">急停</text>
+
+  <rect x="438" y="397" width="198" height="190" rx="8" fill="#FAF7FD" stroke="#BDA7E0" stroke-width="1.5"/>
+  <text x="458" y="432" class="module">Agent 编排运行时</text>
+  <text x="458" y="461" class="detail">角色 Prompt</text><text x="458" y="483" class="detail">任务状态机</text>
+  <line x1="458" y1="500" x2="616" y2="500" stroke="#DED4EF"/>
+  <text x="458" y="527" class="module" fill="#6541A5">LLM 接入层</text>
+  <text x="458" y="554" class="detail">Provider Adapter · Context</text>
+
+  <rect x="652" y="397" width="214" height="190" rx="8" fill="#F4F8FE" stroke="#A9C9F2" stroke-width="1.5"/>
+  <text x="672" y="432" class="module">Task Planner</text>
+  <text x="672" y="459" class="detail">需求拆解 · Vibe Coding</text>
+  <line x1="672" y1="478" x2="846" y2="478" stroke="#D7E4F5"/>
+  <text x="672" y="508" class="module">DSL Generator</text>
+  <text x="672" y="535" class="detail">robot-plan/v1</text>
+  <text x="672" y="559" class="detail">Schema / 参数 / 风险预校验</text>
+
+  <!-- Main forward arrows and numbered steps -->
+  <path d="M177 463 L218 463" fill="none" stroke="#C85A12" stroke-width="3" marker-end="url(#orangeArrow)"/>
+  <circle cx="197" cy="443" r="11" fill="#C85A12"/><text x="197" y="448" text-anchor="middle" class="step">1</text>
+  <path d="M422 492 L432 492" fill="none" stroke="#C85A12" stroke-width="3" marker-end="url(#orangeArrow)"/>
+  <circle cx="430" cy="471" r="11" fill="#C85A12"/><text x="430" y="476" text-anchor="middle" class="step">2</text>
+  <path d="M636 492 L646 492" fill="none" stroke="#C85A12" stroke-width="3" marker-end="url(#orangeArrow)"/>
+  <circle cx="644" cy="471" r="11" fill="#C85A12"/><text x="644" y="476" text-anchor="middle" class="step">3</text>
+  <path d="M655 226 L655 245 L537 245 L537 392" fill="none" stroke="#8A77AD" stroke-width="2" stroke-dasharray="7 6" marker-end="url(#purpleArrow)"/>
+  <rect x="447" y="238" width="188" height="32" rx="8" fill="#F0EBF9"/><text x="541" y="259" text-anchor="middle" font-size="13" font-weight="700" fill="#6541A5">HTTPS / Streaming API</text>
+
+  <!-- Transport zone -->
+  <g filter="url(#shadow)">
+    <rect x="910" y="270" width="190" height="360" rx="8" fill="#FFFFFF"/>
+    <rect x="910" y="270" width="190" height="66" rx="8" fill="#465469"/><rect x="910" y="328" width="190" height="8" fill="#465469"/>
+  </g>
+  <text x="1005" y="300" text-anchor="middle" class="transportTitle">安全通信通道</text>
+  <text x="1005" y="322" text-anchor="middle" class="transportSub">LAN / Internet</text>
+  <rect x="930" y="353" width="150" height="104" rx="8" fill="#FFF2E5" stroke="#E4A36F" stroke-width="1.5"/>
+  <text x="1005" y="386" text-anchor="middle" class="module" fill="#A85217">HTTPS</text>
+  <text x="1005" y="413" text-anchor="middle" class="detail">Validate / Submit</text>
+  <text x="1005" y="436" text-anchor="middle" class="detail">Execute / Stop</text>
+  <path d="M890 492 L1104 492" fill="none" stroke="#C85A12" stroke-width="3" marker-end="url(#orangeArrow)"/>
+  <circle cx="1005" cy="475" r="11" fill="#C85A12"/><text x="1005" y="480" text-anchor="middle" class="step">4</text>
+  <rect x="930" y="525" width="150" height="78" rx="8" fill="#F5F7FA" stroke="#D0D5DD"/>
+  <text x="1005" y="551" text-anchor="middle" font-size="14" font-weight="700">连接安全</text>
+  <text x="1005" y="575" text-anchor="middle" class="tiny">Pairing · TLS · Pinning</text>
+  <text x="1005" y="595" text-anchor="middle" class="tiny">Token · Idempotency</text>
+
+  <!-- Robot zone -->
+  <g filter="url(#shadow)">
+    <rect x="1120" y="270" width="740" height="360" rx="8" fill="#FFFFFF"/>
+    <rect x="1120" y="270" width="740" height="66" rx="8" fill="#16897D"/><rect x="1120" y="328" width="740" height="8" fill="#16897D"/>
+  </g>
+  <text x="1148" y="311" class="zoneTitle">ROBOT LINUX 沙盒</text>
+  <text x="1415" y="311" class="zoneSub">验证、安全执行与本地硬件控制</text>
+
+  <!-- Robot layer headers -->
+  <rect x="1144" y="353" width="160" height="32" rx="8" fill="#E6F4F1"/><text x="1224" y="374" text-anchor="middle" class="layer">接入层</text>
+  <rect x="1317" y="353" width="170" height="32" rx="8" fill="#FFF2E5"/><text x="1402" y="374" text-anchor="middle" class="layer">计划控制层</text>
+  <rect x="1500" y="353" width="170" height="32" rx="8" fill="#FDEBEC"/><text x="1585" y="374" text-anchor="middle" class="layer">安全执行层</text>
+  <rect x="1683" y="353" width="153" height="32" rx="8" fill="#EEF0F4"/><text x="1759" y="374" text-anchor="middle" class="layer">设备层</text>
+
+  <!-- Robot-enforced execution boundary -->
+  <rect x="1308" y="389" width="538" height="208" rx="8" fill="none" stroke="#B4232C" stroke-width="2" stroke-dasharray="7 5"/>
+  <rect x="1323" y="376" width="188" height="26" rx="8" fill="#FFFFFF" stroke="#E98F97"/>
+  <text x="1417" y="394" text-anchor="middle" font-size="13" font-weight="700" fill="#B4232C">ROBOT 强制执行边界</text>
+
+  <!-- Robot modules -->
+  <rect x="1144" y="397" width="160" height="190" rx="8" fill="#EFF9F7" stroke="#80C7BE" stroke-width="1.5"/>
+  <text x="1164" y="434" class="module">robot-api</text>
+  <text x="1164" y="463" class="detail">HTTPS / WSS</text>
+  <text x="1164" y="487" class="detail">认证与幂等</text>
+  <text x="1164" y="511" class="detail">请求 / 事件网关</text>
+  <rect x="1164" y="535" width="116" height="30" rx="8" fill="#D6EFEA"/><text x="1222" y="555" text-anchor="middle" font-size="13" font-weight="700" fill="#116C63">Audit Log</text>
+
+  <rect x="1317" y="397" width="170" height="190" rx="8" fill="#FFF8EF" stroke="#E4A36F" stroke-width="1.5"/>
+  <text x="1337" y="431" class="module">Tool Registry</text>
+  <text x="1337" y="457" class="detail">能力 / Schema / Risk</text>
+  <line x1="1337" y1="475" x2="1467" y2="475" stroke="#EED4BC"/>
+  <text x="1334" y="505" font-size="17" font-weight="700" fill="#A85217">Plan Validator</text>
+  <text x="1337" y="531" class="detail">工具 / 参数 / 确认</text>
+  <text x="1337" y="554" class="detail">Lease / No-go Zone</text>
+
+  <rect x="1500" y="397" width="170" height="190" rx="8" fill="#FFF3F4" stroke="#E98F97" stroke-width="1.5"/>
+  <text x="1520" y="431" class="module">Plan Executor</text>
+  <text x="1520" y="457" class="detail">步骤 / Timeout / Stop</text>
+  <line x1="1520" y1="475" x2="1650" y2="475" stroke="#EFC4C8"/>
+  <text x="1520" y="505" class="module" fill="#B4232C">Safety Proxy</text>
+  <text x="1520" y="531" class="detail">速度 / 避障 / 碰撞</text>
+  <text x="1520" y="554" class="detail">Watchdog / Lease / TTL</text>
+
+  <rect x="1683" y="397" width="153" height="190" rx="8" fill="#273449"/>
+  <text x="1703" y="422" class="whiteTitle">Tool Adapters</text>
+  <text x="1703" y="446" class="whiteDetail">Base</text><text x="1763" y="446" class="whiteDetail">Arm</text>
+  <text x="1703" y="464" class="whiteDetail">Vision</text><text x="1763" y="464" class="whiteDetail">Speech</text>
+  <text x="1703" y="482" class="whiteDetail">LED</text><text x="1763" y="482" class="whiteDetail">Memory</text>
+  <line x1="1703" y1="492" x2="1816" y2="492" stroke="#536076"/>
+  <text x="1703" y="523" class="whiteTitle">Hardware</text>
+  <text x="1703" y="551" class="whiteDetail">ROS / Vendor SDK</text>
+
+  <path d="M1304 492 L1311 492" fill="none" stroke="#C85A12" stroke-width="3" marker-end="url(#orangeArrow)"/>
+  <path d="M1487 492 L1494 492" fill="none" stroke="#C85A12" stroke-width="3" marker-end="url(#orangeArrow)"/>
+  <path d="M1670 492 L1677 492" fill="none" stroke="#C85A12" stroke-width="3" marker-end="url(#orangeArrow)"/>
+  <circle cx="1311" cy="471" r="11" fill="#C85A12"/><text x="1311" y="476" text-anchor="middle" class="step">5</text>
+  <circle cx="1494" cy="471" r="11" fill="#C85A12"/><text x="1494" y="476" text-anchor="middle" class="step">6</text>
+  <circle cx="1677" cy="471" r="11" fill="#C85A12"/><text x="1677" y="476" text-anchor="middle" class="step">7</text>
+
+  <!-- Dedicated return-flow area -->
+  <text x="60" y="684" font-size="20" font-weight="700">独立回传链路</text>
+  <text x="223" y="684" class="detail">从上方对应模块引出，方向统一为 Robot → Pad</text>
+  <rect x="60" y="702" width="1800" height="170" rx="8" fill="#FFFFFF" stroke="#D0D5DD"/>
+
+  <!-- Capability sync -->
+  <rect x="88" y="721" width="238" height="38" rx="8" fill="#EAF3FE"/><text x="207" y="746" text-anchor="middle" class="laneTitle" fill="#1D5EAC">0 · Tool Registry 能力同步</text>
+  <text x="348" y="736" class="laneText">Robot Tool Registry → Pad DSL Generator，生成计划前读取</text>
+  <path d="M1402 587 L1402 750 L759 750 L759 592" fill="none" stroke="#2A72D4" stroke-width="2.5" stroke-dasharray="8 6" marker-end="url(#blueArrow)"/>
+  <rect x="925" y="733" width="160" height="34" rx="8" fill="#EAF3FE" stroke="#A9C9F2"/><text x="1005" y="755" text-anchor="middle" font-size="13" font-weight="700" fill="#1D5EAC">GET /api/tools</text>
+
+  <!-- Status events -->
+  <rect x="88" y="771" width="238" height="38" rx="8" fill="#E6F4F1"/><text x="207" y="796" text-anchor="middle" class="laneTitle" fill="#116C63">8 · 状态与执行事件</text>
+  <text x="380" y="786" class="laneText">Plan / Step / Robot Status → Lightory Agent 沙盒</text>
+  <path d="M1585 587 L1585 800 L350 800 L350 592" fill="none" stroke="#16897D" stroke-width="2.5" marker-end="url(#greenArrow)"/>
+  <rect x="925" y="783" width="160" height="34" rx="8" fill="#E6F4F1" stroke="#80C7BE"/><text x="1005" y="805" text-anchor="middle" font-size="13" font-weight="700" fill="#116C63">WebSocket / WSS</text>
+
+  <!-- Video -->
+  <rect x="88" y="821" width="238" height="38" rx="8" fill="#F0EBF9"/><text x="207" y="846" text-anchor="middle" class="laneTitle" fill="#6541A5">9 · 实时视频</text>
+  <text x="420" y="836" class="laneText">Robot Video Service → Lightory UI；HTTPS 只管理会话与 Token</text>
+  <path d="M1760 587 L1760 850 L390 850 L390 592" fill="none" stroke="#8A77AD" stroke-width="2.5" marker-end="url(#purpleArrow)"/>
+  <rect x="925" y="833" width="160" height="34" rx="8" fill="#F0EBF9" stroke="#BDA7E0"/><text x="1005" y="855" text-anchor="middle" font-size="13" font-weight="700" fill="#6541A5">WebRTC / HLS</text>
+
+  <!-- Bottom architecture rules -->
+  <g transform="translate(60,900)">
+    <rect width="560" height="112" rx="8" fill="#FFFFFF" stroke="#D0D5DD"/>
+    <rect width="8" height="112" rx="4" fill="#D9681E"/>
+    <text x="30" y="32" class="legendTitle" fill="#A85217">主控制链</text>
+    <text x="30" y="58" class="legendText">用户指令沿编号 1–7 单向流动，最终触达硬件。</text>
+    <text x="30" y="83" class="legendText">高风险动作必须经过确认、Validator 与 Safety Proxy。</text>
+  </g>
+  <g transform="translate(640,900)">
+    <rect width="610" height="112" rx="8" fill="#FFFFFF" stroke="#D0D5DD"/>
+    <rect width="8" height="112" rx="4" fill="#B4232C"/>
+    <text x="30" y="32" class="legendTitle" fill="#B4232C">执行边界</text>
+    <text x="30" y="58" class="legendText">Robot 仅接受 robot-plan/v1，不执行任意 JS / TS / Python。</text>
+    <text x="30" y="83" class="legendText">所有运动工具必须经过本体安全层，不信任 Pad 预校验。</text>
+  </g>
+  <g transform="translate(1270,900)">
+    <rect width="590" height="112" rx="8" fill="#FFFFFF" stroke="#D0D5DD"/>
+    <rect width="8" height="112" rx="4" fill="#16897D"/>
+    <text x="30" y="32" class="legendTitle" fill="#116C63">断线保护</text>
+    <text x="30" y="58" class="legendText">Watchdog、避障和急停均在 Robot 本地运行。</text>
+    <text x="30" y="83" class="legendText">Pad 离线或 Lease 超时后，本体仍可独立安全停车。</text>
+  </g>
+  <text x="1860" y="1050" text-anchor="end" font-size="12" fill="#8791A2">Source: docs/pad-robot-api-control-requirements.md</text>
+</svg>

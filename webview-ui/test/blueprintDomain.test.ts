@@ -65,7 +65,10 @@ test('deleting a node removes dependent edges and clears child containment', () 
   state = run(state, { type: 'edge.create', edge: triggerEdge });
   state = run(state, { type: 'node.delete', nodeId: 'system' });
 
-  assert.equal(state.present.nodes.some(({ id }) => id === 'system'), false);
+  assert.equal(
+    state.present.nodes.some(({ id }) => id === 'system'),
+    false,
+  );
   assert.equal(state.present.nodes.find(({ id }) => id === 'move')?.parentId, undefined);
 
   state = run(state, { type: 'node.delete', nodeId: 'voice' });
@@ -89,6 +92,94 @@ test('rejects invalid node containment and missing edge endpoints', () => {
       }),
     /Unknown node: missing/,
   );
+});
+
+test('keeps raw strokes in history and detaches them when explicitly deleted', () => {
+  let state = createBlueprintHistoryState(createEmptyBlueprintDocument());
+  const stroke = {
+    id: 'stroke-1',
+    pointerKind: 'pen' as const,
+    createdAt: 1,
+    points: [
+      { x: 10, y: 10, t: 1, pressure: 0.4 },
+      { x: 20, y: 20, t: 2, pressure: 0.6 },
+    ],
+  };
+  state = run(state, { type: 'stroke.add', stroke });
+  state = run(state, {
+    type: 'node.create',
+    node: { ...moveNode, sourceStrokeIds: ['stroke-1'] },
+  });
+  state = run(state, { type: 'stroke.delete', strokeId: 'stroke-1' });
+
+  assert.equal(state.present.strokes.length, 0);
+  assert.deepEqual(state.present.nodes[0]?.sourceStrokeIds, []);
+  state = blueprintHistoryReducer(state, { type: 'history.undo' });
+  assert.equal(state.present.strokes.length, 1);
+  assert.deepEqual(state.present.nodes[0]?.sourceStrokeIds, ['stroke-1']);
+});
+
+test('replaces an erased source stroke atomically and undo restores its references', () => {
+  let state = createBlueprintHistoryState(createEmptyBlueprintDocument());
+  const stroke = {
+    id: 'source-stroke',
+    pointerKind: 'pen' as const,
+    createdAt: 1,
+    points: [
+      { x: 0, y: 0, t: 1, pressure: 0.5 },
+      { x: 100, y: 0, t: 2, pressure: 0.5 },
+    ],
+  };
+  state = run(state, { type: 'stroke.add', stroke });
+  state = run(state, {
+    type: 'node.create',
+    node: { ...moveNode, sourceStrokeIds: ['source-stroke'] },
+  });
+  const fragment = { ...stroke, id: 'fragment', points: stroke.points.slice(0, 1) };
+  state = run(state, {
+    type: 'stroke.replace',
+    replacements: [{ sourceStrokeId: 'source-stroke', strokes: [fragment] }],
+  });
+
+  assert.deepEqual(
+    state.present.strokes.map(({ id }) => id),
+    ['fragment'],
+  );
+  assert.deepEqual(state.present.nodes[0]?.sourceStrokeIds, ['fragment']);
+  state = blueprintHistoryReducer(state, { type: 'history.undo' });
+  assert.deepEqual(
+    state.present.strokes.map(({ id }) => id),
+    ['source-stroke'],
+  );
+  assert.deepEqual(state.present.nodes[0]?.sourceStrokeIds, ['source-stroke']);
+});
+
+test('clears the complete canvas in one undoable command', () => {
+  let state = createBlueprintHistoryState(createEmptyBlueprintDocument());
+  state = run(state, { type: 'node.create', node: moveNode });
+  state = run(state, { type: 'document.clear' });
+  assert.equal(state.present.nodes.length, 0);
+  assert.equal(state.present.revisions.at(-1)?.reason, 'document.clear');
+
+  state = blueprintHistoryReducer(state, { type: 'history.undo' });
+  assert.equal(state.present.nodes.length, 1);
+});
+
+test('edits a recognized module name and type and detaches children when needed', () => {
+  let state = createBlueprintHistoryState(createEmptyBlueprintDocument());
+  state = run(state, { type: 'node.create', node: container });
+  state = run(state, { type: 'node.create', node: moveNode });
+  state = run(state, { type: 'node.set-parent', nodeId: 'move', parentId: 'system' });
+  state = run(state, {
+    type: 'node.update',
+    nodeId: 'system',
+    label: '寻宝成果',
+    kind: 'artifact',
+  });
+
+  assert.equal(state.present.nodes.find(({ id }) => id === 'system')?.label, '寻宝成果');
+  assert.equal(state.present.nodes.find(({ id }) => id === 'system')?.kind, 'artifact');
+  assert.equal(state.present.nodes.find(({ id }) => id === 'move')?.parentId, undefined);
 });
 
 function run(
