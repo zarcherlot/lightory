@@ -1,7 +1,7 @@
 export type PointerKind = 'mouse' | 'touch' | 'pen';
 export type BlueprintNodeKind = 'start' | 'end' | 'function' | 'artifact' | 'container';
 export type BlueprintRelation = 'handoff';
-export type HandoffKind = 'artifact' | 'completion';
+export type HandoffKind = 'trigger' | 'message';
 export type StageGate = 'goal' | 'architecture' | 'assignment' | 'build' | 'test';
 
 export interface ToolDefinition {
@@ -114,6 +114,8 @@ export interface BlueprintEdge {
   relation: BlueprintRelation;
   handoffKind: HandoffKind;
   label?: string;
+  condition?: string;
+  message?: string;
   sourcePortId?: string;
   targetPortId?: string;
   artifactSchemaId?: string;

@@ -22,7 +22,8 @@ const triggerEdge: BlueprintEdge = {
   sourceId: 'move',
   targetId: 'voice',
   relation: 'handoff',
-  handoffKind: 'completion',
+  handoffKind: 'trigger',
+  condition: '移动完成后',
   sourceStrokeIds: [],
 };
 
@@ -99,7 +100,8 @@ test('supports a start module as the source of the program flow', () => {
       sourceId: 'start',
       targetId: 'move',
       relation: 'handoff',
-      handoffKind: 'completion',
+      handoffKind: 'trigger',
+      condition: '总工程师点击开始后',
       sourceStrokeIds: [],
     },
   });
@@ -239,13 +241,75 @@ test('edits a recognized module name and type and detaches children when needed'
   state = run(state, {
     type: 'node.update',
     nodeId: 'system',
-    label: '寻宝成果',
-    kind: 'artifact',
+    label: '寻宝流程',
+    kind: 'function',
   });
 
-  assert.equal(state.present.nodes.find(({ id }) => id === 'system')?.label, '寻宝成果');
-  assert.equal(state.present.nodes.find(({ id }) => id === 'system')?.kind, 'artifact');
+  assert.equal(state.present.nodes.find(({ id }) => id === 'system')?.label, '寻宝流程');
+  assert.equal(state.present.nodes.find(({ id }) => id === 'system')?.kind, 'function');
   assert.equal(state.present.nodes.find(({ id }) => id === 'move')?.parentId, undefined);
+});
+
+test('creates trigger and message connections with required child-authored details', () => {
+  let state = createBlueprintHistoryState(createEmptyBlueprintDocument());
+  state = run(state, { type: 'node.create', node: moveNode });
+  state = run(state, { type: 'node.create', node: voiceNode });
+
+  state = run(state, {
+    type: 'edge.create',
+    edge: {
+      id: 'move-triggers-voice',
+      sourceId: 'move',
+      targetId: 'voice',
+      relation: 'handoff',
+      handoffKind: 'trigger',
+      condition: '到达目标后',
+      sourceStrokeIds: [],
+    },
+  });
+  state = run(state, {
+    type: 'edge.create',
+    edge: {
+      id: 'move-message-voice',
+      sourceId: 'move',
+      targetId: 'voice',
+      relation: 'handoff',
+      handoffKind: 'message',
+      message: '告诉语音模块：宝藏在沙发旁',
+      sourceStrokeIds: [],
+    },
+  });
+
+  assert.equal(state.present.edges[0]?.condition, '到达目标后');
+  assert.equal(state.present.edges[1]?.message, '告诉语音模块：宝藏在沙发旁');
+  assert.throws(
+    () => run(state, {
+      type: 'edge.create',
+      edge: {
+        id: 'missing-condition',
+        sourceId: 'move',
+        targetId: 'voice',
+        relation: 'handoff',
+        handoffKind: 'trigger',
+        sourceStrokeIds: [],
+      },
+    }),
+    /触发条件不能为空/,
+  );
+  assert.throws(
+    () => run(state, {
+      type: 'edge.create',
+      edge: {
+        id: 'missing-message',
+        sourceId: 'move',
+        targetId: 'voice',
+        relation: 'handoff',
+        handoffKind: 'message',
+        sourceStrokeIds: [],
+      },
+    }),
+    /传递消息不能为空/,
+  );
 });
 
 function run(

@@ -3,13 +3,13 @@ import '@xyflow/react/dist/style.css';
 import {
   ArrowCounterClockwise,
   ArrowRight,
-  Circle,
   CursorClick,
   Eraser,
   House,
   PencilSimple,
   Rectangle,
   Trash,
+  Triangle,
 } from '@phosphor-icons/react';
 import {
   applyNodeChanges,
@@ -78,6 +78,8 @@ interface PendingConnection {
   sourceId: string;
   targetId: string;
   sourceStrokeIds: string[];
+  handoffKind?: 'trigger' | 'message';
+  detail: string;
 }
 
 const nodeTypes = {
@@ -129,7 +131,7 @@ export function EngineeringCanvas(props: EngineeringCanvasProps) {
   }, [currentScopeId, props.document.nodes]);
   useEffect(() => {
     if (!candidate) return;
-    if (candidate.kind === 'ellipse') setCandidateLabel('线索卡');
+    if (candidate.kind === 'ellipse') setCandidateLabel('新模块');
     else if (candidate.kind === 'rectangle') setCandidateLabel('新模块');
     else if (candidate.kind === 'unknown') setCandidateLabel('新模块');
     else setCandidateLabel('');
@@ -243,13 +245,19 @@ export function EngineeringCanvas(props: EngineeringCanvasProps) {
       sourceId: source.id,
       targetId: target.id,
       sourceStrokeIds: candidate.strokeIds,
+      detail: '',
     });
     setCandidate(null);
   }, [candidate, visibleNodes]);
 
   const confirmConnection = useCallback(
-    (handoffKind: 'artifact' | 'completion') => {
-      if (!pendingConnection) return;
+    () => {
+      if (!pendingConnection?.handoffKind) return;
+      const detail = pendingConnection.detail.trim();
+      if (!detail) {
+        setAssignmentNotice(pendingConnection.handoffKind === 'trigger' ? '请先写下触发条件。' : '请先写下要传递的消息。');
+        return;
+      }
       props.onCommand({
         type: 'edge.create',
         edge: {
@@ -257,7 +265,8 @@ export function EngineeringCanvas(props: EngineeringCanvasProps) {
           sourceId: pendingConnection.sourceId,
           targetId: pendingConnection.targetId,
           relation: 'handoff',
-          handoffKind,
+          handoffKind: pendingConnection.handoffKind,
+          ...(pendingConnection.handoffKind === 'trigger' ? { condition: detail } : { message: detail }),
           sourceStrokeIds: pendingConnection.sourceStrokeIds,
         },
       });
@@ -275,7 +284,7 @@ export function EngineeringCanvas(props: EngineeringCanvasProps) {
       const node = props.document.nodes.find(({ id }) => id === nodeId);
       if (!agent || !node) return;
       if (node.kind !== 'function') {
-        setAssignmentNotice('Agent 只能分配给功能模块，不能分配给成果或子系统。');
+        setAssignmentNotice('Agent 只能分配给功能模块，不能分配给流程控制或子系统。');
         return;
       }
       const existing = props.document.assignments.find(
@@ -458,7 +467,7 @@ export function EngineeringCanvas(props: EngineeringCanvasProps) {
         nodes={visibleNodes}
         onChange={setConnectorDraft}
         onComplete={(sourceId, targetId) => {
-          setPendingConnection({ sourceId, targetId, sourceStrokeIds: [] });
+          setPendingConnection({ sourceId, targetId, sourceStrokeIds: [], detail: '' });
           setConnectorDraft(null);
         }}
         screenToFlowPosition={screenToFlowPosition}
@@ -480,13 +489,39 @@ export function EngineeringCanvas(props: EngineeringCanvasProps) {
       {pendingConnection && (
         <div className="engineering-relation-dialog" role="dialog" aria-label="选择连线关系">
           <strong>这条连线表示什么？</strong>
-          <span>总工程师需要明确模块之间的交付。</span>
-          <div>
-            <button onClick={() => confirmConnection('completion')} type="button">
-              完成消息
+          <span>两种连线都会让下一个模块自动开始；传递消息还会把消息交给下游工程师。</span>
+          <div className="engineering-relation-options">
+            <button
+              aria-pressed={pendingConnection.handoffKind === 'trigger'}
+              className={pendingConnection.handoffKind === 'trigger' ? 'is-active' : ''}
+              onClick={() => setPendingConnection({ ...pendingConnection, handoffKind: 'trigger', detail: pendingConnection.detail || '上游完成后' })}
+              type="button"
+            >
+              触发信号
             </button>
-            <button onClick={() => confirmConnection('artifact')} type="button">
-              交付成果
+            <button
+              aria-pressed={pendingConnection.handoffKind === 'message'}
+              className={pendingConnection.handoffKind === 'message' ? 'is-active' : ''}
+              onClick={() => setPendingConnection({ ...pendingConnection, handoffKind: 'message', detail: pendingConnection.detail })}
+              type="button"
+            >
+              传递消息
+            </button>
+          </div>
+          {pendingConnection.handoffKind && (
+            <label>
+              {pendingConnection.handoffKind === 'trigger' ? '什么时候触发下一个模块？' : '要传给下一个模块什么信息？'}
+              <textarea
+                autoFocus
+                rows={3}
+                value={pendingConnection.detail}
+                onChange={(event) => setPendingConnection({ ...pendingConnection, detail: event.target.value })}
+              />
+            </label>
+          )}
+          <div>
+            <button disabled={!pendingConnection.handoffKind || !pendingConnection.detail.trim()} onClick={confirmConnection} type="button">
+              建立连线
             </button>
             <button className="is-ghost" onClick={() => setPendingConnection(null)} type="button">
               取消
@@ -643,7 +678,7 @@ function CanvasToolbar({
           <Rectangle size={18} /> 功能/子系统
         </span>
         <span>
-          <Circle size={18} /> 成果
+          <Triangle size={18} /> 开始/结束
         </span>
       </div>
     </nav>
@@ -877,11 +912,12 @@ function NodeEditDialog({
   onCancel: () => void;
 }) {
   const kinds: Array<{ id: BlueprintNodeKind; label: string }> = [
-    { id: 'start', label: '开始模块' },
-    { id: 'end', label: '结束模块' },
     { id: 'function', label: '功能模块' },
-    { id: 'artifact', label: '成果节点' },
     { id: 'container', label: '子系统' },
+  ];
+  const controlKinds: Array<{ id: BlueprintNodeKind; label: string }> = [
+    { id: 'start', label: '开始' },
+    { id: 'end', label: '结束' },
   ];
   return (
     <div className="engineering-clear-backdrop" role="presentation">
@@ -896,7 +932,7 @@ function NodeEditDialog({
           />
         </label>
         <fieldset>
-          <legend>模块类型</legend>
+          <legend>工程模块</legend>
           <div>
             {kinds.map((kind) => (
               <button
@@ -909,6 +945,26 @@ function NodeEditDialog({
                   control: kind.id === 'start' || kind.id === 'end'
                     ? draft.control ?? createDefaultControlSettings()
                     : undefined,
+                })}
+                type="button"
+              >
+                {kind.label}
+              </button>
+            ))}
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>流程控制</legend>
+          <div>
+            {controlKinds.map((kind) => (
+              <button
+                aria-pressed={draft.kind === kind.id}
+                className={draft.kind === kind.id ? 'is-active' : ''}
+                key={kind.id}
+                onClick={() => onChange({
+                  ...draft,
+                  kind: kind.id,
+                  control: draft.control ?? createDefaultControlSettings(),
                 })}
                 type="button"
               >
@@ -990,39 +1046,25 @@ function RecognitionCard({
             <input value={label} onChange={(event) => onLabelChange(event.target.value)} />
           </label>
           <div className="engineering-recognition-actions">
-            {candidate.kind === 'rectangle' ? (
+            <button
+              disabled={!label.trim()}
+              onClick={() => onCreateNode('function')}
+              type="button"
+            >
+              功能模块
+            </button>
+            <button
+              disabled={!label.trim()}
+              onClick={() => onCreateNode('container')}
+              type="button"
+            >
+              子系统
+            </button>
+            {candidate.kind === 'rectangle' && (
               <>
-                <button
-                  disabled={!label.trim()}
-                  onClick={() => onCreateNode('start')}
-                  type="button"
-                >
-                  开始模块
-                </button>
-                <button disabled={!label.trim()} onClick={() => onCreateNode('end')} type="button">结束模块</button>
-                <button
-                  disabled={!label.trim()}
-                  onClick={() => onCreateNode('function')}
-                  type="button"
-                >
-                  功能模块
-                </button>
-                <button
-                  disabled={!label.trim()}
-                  onClick={() => onCreateNode('container')}
-                  type="button"
-                >
-                  子系统
-                </button>
+                <button disabled={!label.trim()} onClick={() => onCreateNode('start')} type="button">开始</button>
+                <button disabled={!label.trim()} onClick={() => onCreateNode('end')} type="button">结束</button>
               </>
-            ) : (
-              <button
-                disabled={!label.trim()}
-                onClick={() => onCreateNode('artifact')}
-                type="button"
-              >
-                成果节点
-              </button>
             )}
             <button className="is-ghost" onClick={onDismiss} type="button">
               保留笔迹
@@ -1039,10 +1081,6 @@ function RecognitionCard({
             <input value={label} onChange={(event) => onLabelChange(event.target.value)} />
           </label>
           <div className="engineering-recognition-actions">
-            <button disabled={!label.trim()} onClick={() => onCreateNode('start')} type="button">
-              开始模块
-            </button>
-            <button disabled={!label.trim()} onClick={() => onCreateNode('end')} type="button">结束模块</button>
             <button disabled={!label.trim()} onClick={() => onCreateNode('function')} type="button">
               功能模块
             </button>
@@ -1053,9 +1091,8 @@ function RecognitionCard({
             >
               子系统
             </button>
-            <button disabled={!label.trim()} onClick={() => onCreateNode('artifact')} type="button">
-              成果节点
-            </button>
+            <button disabled={!label.trim()} onClick={() => onCreateNode('start')} type="button">开始</button>
+            <button disabled={!label.trim()} onClick={() => onCreateNode('end')} type="button">结束</button>
             <button className="is-ghost" onClick={onDismiss} type="button">
               保留笔迹
             </button>
@@ -1137,7 +1174,7 @@ function findNodeAtPoint(
 
 function recognitionLabel(kind: RecognitionCandidate['kind']): string {
   if (kind === 'rectangle') return '功能模块或子系统';
-  if (kind === 'ellipse') return '成果节点';
+  if (kind === 'ellipse') return '模块草图';
   if (kind === 'arrow') return '模块连接';
   if (kind === 'line') return '连接线';
   return '待确认模块';

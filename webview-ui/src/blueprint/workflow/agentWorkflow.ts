@@ -48,6 +48,7 @@ export function analyzeAgentWorkflow(document: BlueprintDocument): AgentWorkflow
       .map((dependencyId) => workflowNodes.get(dependencyId))
       .filter((node): node is AgentWorkflowNode => node !== undefined);
     const inputDeliveryIds = upstreamNodes
+      .filter(({ nodeId }) => hasMessageConnection(document, nodeId, assignment.nodeId))
       .map(({ acceptedDeliveryId }) => acceptedDeliveryId)
       .filter((id): id is string => id !== undefined)
       .sort();
@@ -162,6 +163,27 @@ function findUpstreamExecutableNodes(
   };
   visit(targetId);
   return [...result].sort();
+}
+
+function hasMessageConnection(
+  document: BlueprintDocument,
+  sourceNodeId: string,
+  targetNodeId: string,
+): boolean {
+  const visited = new Set<string>();
+  const visit = (nodeId: string, sawMessage: boolean): boolean => {
+    const key = `${nodeId}:${sawMessage}`;
+    if (visited.has(key)) return false;
+    visited.add(key);
+    for (const edge of document.edges.filter(({ targetId }) => targetId === nodeId)) {
+      const nextSawMessage = sawMessage || edge.handoffKind === 'message';
+      if (edge.sourceId === sourceNodeId) return nextSawMessage;
+      const sourceNode = document.nodes.find(({ id }) => id === edge.sourceId);
+      if (sourceNode?.kind !== 'function' && visit(edge.sourceId, nextSawMessage)) return true;
+    }
+    return false;
+  };
+  return visit(targetNodeId, false);
 }
 
 function createTopologicalBatches(dependencies: Map<string, string[]>): {

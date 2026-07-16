@@ -259,7 +259,8 @@ test('migrates legacy plan edges, contracts and delivery payloads into P3 artifa
   const migratedDelivery = (migrated.deliveries as Array<Record<string, unknown>>)[0]!;
   assert.equal(migrated.planSteps, undefined);
   assert.equal(migratedEdge.relation, 'handoff');
-  assert.equal(migratedEdge.handoffKind, 'completion');
+  assert.equal(migratedEdge.handoffKind, 'trigger');
+  assert.equal(migratedEdge.condition, '上游完成后');
   assert.equal((migratedAssignment.contract as Record<string, unknown>).revision, 1);
   assert.equal((migratedDelivery.artifact as Record<string, unknown>).schemaId, 'lightory.agent-artifact/legacy-v1');
   assert.deepEqual(validateBlueprintDocument(migrated), []);

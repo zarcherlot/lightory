@@ -229,6 +229,7 @@ export function applyBlueprintCommand(
       if (command.edge.relation !== 'handoff') {
         throw new Error('Blueprint edges must be handoff connections.');
       }
+      validateHandoffEdge(command.edge);
       next = { ...document, edges: [...document.edges, command.edge] };
       break;
     case 'edge.delete':
@@ -678,4 +679,16 @@ function assertUniqueId(items: Array<{ id: string }>, id: string, kind: string):
 
 function assertNonEmpty(value: string, label: string): void {
   if (!value.trim()) throw new Error(`${label} cannot be empty.`);
+}
+
+function validateHandoffEdge(edge: BlueprintDocument['edges'][number]): void {
+  if (edge.handoffKind === 'trigger') {
+    if (!edge.condition?.trim()) throw new Error('触发条件不能为空。');
+    return;
+  }
+  if (edge.handoffKind === 'message') {
+    if (!edge.message?.trim()) throw new Error('传递消息不能为空。');
+    return;
+  }
+  throw new Error('连接类型必须是触发信号或传递消息。');
 }

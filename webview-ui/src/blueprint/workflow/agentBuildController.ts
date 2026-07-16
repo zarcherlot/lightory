@@ -147,12 +147,30 @@ function collectVisibleArtifacts(
   workflowNode: AgentWorkflowNode,
 ): AgentRuntimeArtifactInput[] {
   const workflowByNode = new Map(document.workflow?.nodes.map((node) => [node.nodeId, node]));
-  return workflowNode.dependsOnNodeIds.map((nodeId) => {
+  return workflowNode.dependsOnNodeIds.filter((nodeId) =>
+    hasMessageConnection(document, nodeId, workflowNode.nodeId),
+  ).map((nodeId) => {
     const deliveryId = workflowByNode.get(nodeId)?.acceptedDeliveryId;
     const delivery = document.deliveries.find(({ id }) => id === deliveryId);
     if (!delivery) throw new Error(`上游模块 ${nodeId} 没有可用的已验收交付。`);
     return { deliveryId: delivery.id, artifact: delivery.artifact };
   });
+}
+
+function hasMessageConnection(document: BlueprintDocument, sourceNodeId: string, targetNodeId: string): boolean {
+  const visited = new Set<string>();
+  const visit = (nodeId: string, sawMessage: boolean): boolean => {
+    if (visited.has(`${nodeId}:${sawMessage}`)) return false;
+    visited.add(`${nodeId}:${sawMessage}`);
+    for (const edge of document.edges.filter(({ targetId }) => targetId === nodeId)) {
+      const nextSawMessage = sawMessage || edge.handoffKind === 'message';
+      if (edge.sourceId === sourceNodeId) return nextSawMessage;
+      const sourceNode = document.nodes.find(({ id }) => id === edge.sourceId);
+      if (sourceNode?.kind !== 'function' && visit(edge.sourceId, nextSawMessage)) return true;
+    }
+    return false;
+  };
+  return visit(targetNodeId, false);
 }
 
 function validateArtifactBoundary(

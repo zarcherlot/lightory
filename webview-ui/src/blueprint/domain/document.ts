@@ -23,12 +23,20 @@ export function migrateBlueprintDocument(value: unknown): unknown {
   const edges = Array.isArray(value.edges)
     ? value.edges.map((edge) => {
         if (!isRecord(edge)) return edge;
-        if (edge.relation === 'handoff') return edge;
+        if (edge.relation === 'handoff') return migrateHandoffEdge(edge);
         if (edge.relation !== 'data' && edge.relation !== 'trigger') return edge;
         return {
           ...edge,
           relation: 'handoff',
-          handoffKind: edge.relation === 'data' ? 'artifact' : 'completion',
+          ...(edge.relation === 'data'
+            ? {
+                handoffKind: 'message',
+                message: readLegacyEdgeText(edge, '传递上游消息'),
+              }
+            : {
+                handoffKind: 'trigger',
+                condition: readLegacyEdgeText(edge, '上游完成后'),
+              }),
         };
       })
     : value.edges;
@@ -306,20 +314,52 @@ function migrateControlNode(value: unknown): unknown {
   };
 }
 
+function migrateHandoffEdge(edge: Record<string, unknown>): Record<string, unknown> {
+  if (edge.handoffKind === 'trigger') {
+    return {
+      ...edge,
+      condition: readString(edge.condition) || readLegacyEdgeText(edge, '上游完成后'),
+    };
+  }
+  if (edge.handoffKind === 'message') {
+    return {
+      ...edge,
+      message: readString(edge.message) || readLegacyEdgeText(edge, '传递上游消息'),
+    };
+  }
+  if (edge.handoffKind === 'completion') {
+    return {
+      ...edge,
+      handoffKind: 'trigger',
+      condition: readLegacyEdgeText(edge, '上游完成后'),
+    };
+  }
+  if (edge.handoffKind === 'artifact') {
+    return {
+      ...edge,
+      handoffKind: 'message',
+      message: readLegacyEdgeText(edge, '传递上游消息'),
+    };
+  }
+  return edge;
+}
+
 function isBlueprintEdge(value: unknown): boolean {
-  return (
-    isRecord(value) &&
-    isNonEmptyString(value.id) &&
-    isNonEmptyString(value.sourceId) &&
-    isNonEmptyString(value.targetId) &&
-    value.relation === 'handoff' &&
-    ['artifact', 'completion'].includes(String(value.handoffKind)) &&
-    (value.label === undefined || typeof value.label === 'string') &&
-    (value.sourcePortId === undefined || isNonEmptyString(value.sourcePortId)) &&
-    (value.targetPortId === undefined || isNonEmptyString(value.targetPortId)) &&
-    (value.artifactSchemaId === undefined || isNonEmptyString(value.artifactSchemaId)) &&
-    isStringArray(value.sourceStrokeIds)
-  );
+  if (
+    !isRecord(value) ||
+    !isNonEmptyString(value.id) ||
+    !isNonEmptyString(value.sourceId) ||
+    !isNonEmptyString(value.targetId) ||
+    value.relation !== 'handoff' ||
+    !['trigger', 'message'].includes(String(value.handoffKind)) ||
+    (value.label !== undefined && typeof value.label !== 'string') ||
+    (value.sourcePortId !== undefined && !isNonEmptyString(value.sourcePortId)) ||
+    (value.targetPortId !== undefined && !isNonEmptyString(value.targetPortId)) ||
+    (value.artifactSchemaId !== undefined && !isNonEmptyString(value.artifactSchemaId)) ||
+    !isStringArray(value.sourceStrokeIds)
+  ) return false;
+  if (value.handoffKind === 'trigger') return isNonEmptyString(value.condition);
+  return isNonEmptyString(value.message);
 }
 
 function isAssignment(value: unknown): boolean {
@@ -590,6 +630,14 @@ function collectIds(items: unknown[]): Set<string> {
 
 function readId(value: unknown): string {
   return isRecord(value) && typeof value.id === 'string' ? value.id : '<unknown>';
+}
+
+function readString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function readLegacyEdgeText(edge: Record<string, unknown>, fallback: string): string {
+  return readString(edge.label) || readString(edge.condition) || readString(edge.message) || fallback;
 }
 
 function migrateContract(value: unknown): Record<string, unknown> {

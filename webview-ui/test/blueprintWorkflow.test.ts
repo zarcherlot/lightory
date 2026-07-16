@@ -45,8 +45,8 @@ test('derives parallel batches from child-authored handoff connections', () => {
 
 test('carries dependencies through artifact nodes and detects changed upstream deliveries', () => {
   const document = makeDocument(
-    [node('move'), node('arrival', 'artifact'), node('voice')],
-    [edge('move', 'arrival', 'artifact'), edge('arrival', 'voice', 'artifact')],
+    [node('move'), node('voice')],
+    [edge('move', 'voice', 'message', '到达目标的位置和路径')],
     [assignment('move'), assignment('voice')],
     [delivery('move'), delivery('voice', ['delivery-move'])],
   );
@@ -65,6 +65,43 @@ test('carries dependencies through artifact nodes and detects changed upstream d
   const voice = rebuilt.workflow.nodes.find(({ nodeId }) => nodeId === 'voice');
   assert.equal(voice?.status, 'dirty');
   assert.match(voice?.dirtyReason ?? '', /上游交付已经变化/);
+});
+
+test('passes message connections as visible inputs but keeps trigger signals as dependencies only', async () => {
+  const runtime = new DeterministicAgentRuntimeAdapter();
+  const messageDocument = makeDocument(
+    [node('move'), node('voice')],
+    [edge('move', 'voice', 'message', '目标位置和路线方案')],
+    [assignment('move'), assignment('voice')],
+    [delivery('move')],
+  );
+  messageDocument.assignments[1]!.status = 'working';
+  messageDocument.workflow = analyzeAgentWorkflow(messageDocument).workflow;
+  const messageResult = await executeNextAgentBuildBatch({
+    document: messageDocument,
+    agents: [agent('voice')],
+    adapter: runtime,
+    workspaceId: 'family-project',
+    createId: () => 'delivery-voice-message',
+  });
+  assert.deepEqual(messageResult.deliveries[0]?.artifact.inputArtifactIds, ['delivery-move']);
+
+  const signalDocument = makeDocument(
+    [node('move'), node('voice')],
+    [edge('move', 'voice', 'trigger', '小车到达目标后')],
+    [assignment('move'), assignment('voice')],
+    [delivery('move')],
+  );
+  signalDocument.assignments[1]!.status = 'working';
+  signalDocument.workflow = analyzeAgentWorkflow(signalDocument).workflow;
+  const signalResult = await executeNextAgentBuildBatch({
+    document: signalDocument,
+    agents: [agent('voice')],
+    adapter: runtime,
+    workspaceId: 'family-project',
+    createId: () => 'delivery-voice-signal',
+  });
+  assert.deepEqual(signalResult.deliveries[0]?.artifact.inputArtifactIds, []);
 });
 
 test('marks a changed contract and every downstream node dirty', () => {
@@ -197,7 +234,7 @@ test('executes only the earliest runnable batch and submits drafts for child rev
 test('waits for upstream acceptance, then rebuilds a dirty downstream module', async () => {
   const document = makeDocument(
     [node('move'), node('voice')],
-    [edge('move', 'voice')],
+    [edge('move', 'voice', 'message', '移动方案')],
     [assignment('move'), assignment('voice')],
     [delivery('move'), delivery('voice')],
   );
@@ -302,7 +339,8 @@ function node(id: string, kind: BlueprintNode['kind'] = 'function'): BlueprintNo
 function edge(
   sourceId: string,
   targetId: string,
-  handoffKind: BlueprintEdge['handoffKind'] = 'completion',
+  handoffKind: BlueprintEdge['handoffKind'] = 'trigger',
+  detail = '上游完成后',
 ): BlueprintEdge {
   return {
     id: `${sourceId}-${targetId}`,
@@ -310,6 +348,7 @@ function edge(
     targetId,
     relation: 'handoff',
     handoffKind,
+    ...(handoffKind === 'message' ? { message: detail } : { condition: detail }),
     sourceStrokeIds: [],
   };
 }

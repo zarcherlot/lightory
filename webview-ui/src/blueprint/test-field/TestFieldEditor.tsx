@@ -141,7 +141,7 @@ export function TestFieldEditor({
           <em>{scene.entities.length} 个场景图元</em>
         </header>
         <div
-          aria-label="二维试验场"
+          aria-label="试验场"
           className="test-field-stage"
           onPointerDown={(event) => {
             if (event.target === event.currentTarget) setSelectedId(undefined);

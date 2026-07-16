@@ -195,7 +195,8 @@ function edge(sourceId: string, targetId: string): BlueprintEdge {
     sourceId,
     targetId,
     relation: 'handoff',
-    handoffKind: 'artifact',
+    handoffKind: 'message',
+    message: '上游消息',
     sourceStrokeIds: [],
   };
 }

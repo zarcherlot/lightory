@@ -17,7 +17,7 @@ export function EndNodeView(props: NodeProps<BlueprintFlowNode>) {
 }
 
 export function ArtifactNodeView(props: NodeProps<BlueprintFlowNode>) {
-  return <NodeShell {...props} badge="成果" />;
+  return <NodeShell {...props} badge="旧信息" />;
 }
 
 export function ContainerNodeView(props: NodeProps<BlueprintFlowNode>) {

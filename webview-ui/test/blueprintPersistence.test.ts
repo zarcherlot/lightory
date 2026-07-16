@@ -65,6 +65,61 @@ test('migrates a valid older document by adding review and experiment collection
   assert.deepEqual(loaded?.experimentExpectations, []);
 });
 
+test('migrates legacy completion and artifact connections to trigger and message interactions', async () => {
+  const storage = new MemoryStorage();
+  const legacy = {
+    ...createEmptyBlueprintDocument(),
+    nodes: [
+      {
+        id: 'move',
+        kind: 'function',
+        label: '移动',
+        position: { x: 0, y: 0 },
+        size: { width: 180, height: 120 },
+        sourceStrokeIds: [],
+        recognition: { source: 'manual' },
+      },
+      {
+        id: 'voice',
+        kind: 'function',
+        label: '语音',
+        position: { x: 240, y: 0 },
+        size: { width: 180, height: 120 },
+        sourceStrokeIds: [],
+        recognition: { source: 'manual' },
+      },
+    ],
+    edges: [
+      {
+        id: 'completion',
+        sourceId: 'move',
+        targetId: 'voice',
+        relation: 'handoff',
+        handoffKind: 'completion',
+        sourceStrokeIds: [],
+      },
+      {
+        id: 'artifact',
+        sourceId: 'move',
+        targetId: 'voice',
+        relation: 'handoff',
+        handoffKind: 'artifact',
+        label: '路线方案',
+        sourceStrokeIds: [],
+      },
+    ],
+  };
+  storage.setItem('lightory.blueprint.v1:legacy-edges', JSON.stringify(legacy));
+  const repository = new LocalStorageBlueprintRepository(storage);
+
+  const loaded = await repository.load('legacy-edges');
+
+  assert.equal(loaded?.edges[0]?.handoffKind, 'trigger');
+  assert.equal(loaded?.edges[0]?.condition, '上游完成后');
+  assert.equal(loaded?.edges[1]?.handoffKind, 'message');
+  assert.equal(loaded?.edges[1]?.message, '路线方案');
+});
+
 class MemoryStorage implements StorageLike {
   private readonly values = new Map<string, string>();
 

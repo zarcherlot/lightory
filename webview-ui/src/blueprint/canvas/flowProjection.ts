@@ -55,8 +55,10 @@ export function projectBlueprintToFlow(
       source: edge.sourceId,
       target: edge.targetId,
       type: 'smoothstep',
-      animated: edge.handoffKind === 'completion',
-      label: edge.label ?? (edge.handoffKind === 'completion' ? '完成消息' : '交付成果'),
+      animated: edge.handoffKind === 'trigger',
+      label: edge.handoffKind === 'trigger'
+        ? `触发：${edge.condition}`
+        : `消息：${edge.message}`,
       markerEnd: { type: MarkerType.ArrowClosed },
       data: { relation: edge.relation, handoffKind: edge.handoffKind },
     })),

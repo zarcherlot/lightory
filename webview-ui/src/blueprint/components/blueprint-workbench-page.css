@@ -659,10 +659,26 @@
 .engineering-node-start {
   background: linear-gradient(145deg, rgba(75, 47, 10, 0.96), rgba(31, 22, 8, 0.98));
   border-color: var(--eng-amber);
-  border-radius: 999px;
+  border-radius: 14px;
   box-shadow:
     0 0 22px rgba(255, 181, 61, 0.24),
     inset 0 0 20px rgba(255, 181, 61, 0.08);
+}
+
+.engineering-node-start::before,
+.engineering-node-end::before {
+  content: "";
+  display: block;
+  width: 0;
+  height: 0;
+  margin-bottom: 8px;
+  filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.18));
+}
+
+.engineering-node-start::before {
+  border-bottom: 15px solid transparent;
+  border-left: 24px solid var(--eng-amber);
+  border-top: 15px solid transparent;
 }
 
 .engineering-node-start .engineering-node-badge {
@@ -672,8 +688,14 @@
 .engineering-node-end {
   background: linear-gradient(145deg, rgba(24, 72, 55, 0.96), rgba(7, 31, 25, 0.98));
   border-color: #65dbb1;
-  border-radius: 999px;
+  border-radius: 14px;
   box-shadow: 0 0 22px rgba(101, 219, 177, 0.2), inset 0 0 20px rgba(101, 219, 177, 0.08);
+}
+
+.engineering-node-end::before {
+  border-left: 16px solid transparent;
+  border-right: 16px solid transparent;
+  border-top: 26px solid #65dbb1;
 }
 
 .engineering-node-end .engineering-node-badge { background: #65dbb1; }
@@ -878,9 +900,16 @@
   padding: 8px 11px;
 }
 
-.engineering-recognition-actions button:disabled {
+.engineering-recognition-actions button:disabled,
+.engineering-relation-dialog button:disabled {
   cursor: not-allowed;
   opacity: 0.35;
+}
+
+.engineering-relation-dialog button.is-active {
+  background: var(--eng-amber);
+  border-color: #ffd37c;
+  color: #211405;
 }
 
 .engineering-recognition-actions button.is-ghost,
@@ -909,11 +938,38 @@
   position: absolute;
   transform: translateX(-50%);
   z-index: 30;
+  width: min(420px, calc(100vw - 36px));
 }
 
 .engineering-relation-dialog span {
   color: var(--eng-muted);
   font-size: 11px;
+}
+
+.engineering-relation-dialog label {
+  color: var(--eng-cyan);
+  display: grid;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 7px;
+  margin-top: 9px;
+}
+
+.engineering-relation-dialog textarea {
+  background: #07192a;
+  border: 1px solid rgba(69, 221, 255, 0.35);
+  border-radius: 7px;
+  color: var(--eng-text);
+  font: inherit;
+  min-height: 74px;
+  outline: none;
+  padding: 9px 10px;
+  resize: vertical;
+}
+
+.engineering-relation-dialog textarea:focus {
+  border-color: var(--eng-cyan);
+  box-shadow: 0 0 0 3px rgba(69, 221, 255, 0.12);
 }
 
 .engineering-clear-backdrop {

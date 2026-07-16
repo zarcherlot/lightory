@@ -234,7 +234,7 @@ function executeStep(context: ExecuteContext):
   return {
     issue: {
       code: 'unsupported_simulation_tool',
-      message: `二维试验场暂不支持 ${context.step.tool}。`,
+      message: `当前试验场暂不支持 ${context.step.tool}。`,
     },
   };
 }

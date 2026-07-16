@@ -221,11 +221,11 @@ function BlueprintProject({
               setCompileResult(undefined);
             }}
             type="button"
-          ><MapTrifold size={15} />二维试验场</button>
+          ><MapTrifold size={15} />试验场</button>
         </nav>
         <strong>
           {activeView === 'architecture'
-            ? '请画出模块，并说明工程师之间交付什么'
+            ? '请画出模块，并说明模块之间怎样触发或传消息'
             : '布置实验环境：位置、方向和障碍都由你决定'}
         </strong>
         {activeView === 'architecture' && (
@@ -243,7 +243,7 @@ function BlueprintProject({
             </button>
           </>
         )}
-        <small>{activeView === 'architecture' ? '当前只开放：语音、基础移动' : '本地模拟 · 未连接小车'}</small>
+        <small>{activeView === 'architecture' ? '当前只开放：语音、基础移动' : '平面移动模拟 · 未连接小车'}</small>
       </section>
 
       {workflowOpen && (
