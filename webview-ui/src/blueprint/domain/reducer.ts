@@ -1,4 +1,5 @@
 import type { BlueprintCommand } from './commands.js';
+import { clampSceneEntity, createEmptySceneDefinition } from './scene.js';
 import type { BlueprintDocument, BlueprintNode } from './types.js';
 
 export interface BlueprintHistoryState {
@@ -115,10 +116,13 @@ export function applyBlueprintCommand(
         strokes: [],
         nodes: [],
         edges: [],
-        planSteps: [],
+        intentEvidence: [],
         assignments: [],
         deliveries: [],
         assignmentReviews: [],
+        scene: createEmptySceneDefinition(),
+        experimentExpectations: [],
+        workflow: undefined,
         debugSessions: [],
       };
       break;
@@ -132,15 +136,34 @@ export function applyBlueprintCommand(
       const changingFromContainer =
         document.nodes.find((node) => node.id === command.nodeId)?.kind === 'container' &&
         command.kind !== 'container';
+      const removedAssignmentIds = new Set(
+        command.kind === 'function'
+          ? []
+          : document.assignments.filter(({ nodeId }) => nodeId === command.nodeId).map(({ id }) => id),
+      );
+      const removedDeliveryIds = new Set(
+        document.deliveries.filter(({ assignmentId }) => removedAssignmentIds.has(assignmentId)).map(({ id }) => id),
+      );
       next = {
         ...document,
         nodes: replaceNode(document.nodes, command.nodeId, (node) => ({
           ...node,
           label: command.label.trim(),
           kind: command.kind,
+          ...(command.kind === 'start' || command.kind === 'end'
+            ? { control: command.control ?? createDefaultControlSettings() }
+            : { control: undefined }),
         })).map((node) =>
           changingFromContainer && node.parentId === command.nodeId ? withoutParent(node) : node,
         ),
+        edges: document.edges.filter((edge) =>
+          !(edge.targetId === command.nodeId && command.kind === 'start') &&
+          !(edge.sourceId === command.nodeId && command.kind === 'end'),
+        ),
+        assignments: document.assignments.filter(({ id }) => !removedAssignmentIds.has(id)),
+        deliveries: document.deliveries.filter(({ id }) => !removedDeliveryIds.has(id)),
+        assignmentReviews: document.assignmentReviews.filter(({ assignmentId }) => !removedAssignmentIds.has(assignmentId)),
+        debugSessions: document.debugSessions.filter(({ deliveryId }) => !removedDeliveryIds.has(deliveryId)),
       };
       break;
     }
@@ -197,12 +220,153 @@ export function applyBlueprintCommand(
       if (command.edge.sourceId === command.edge.targetId) {
         throw new Error('A blueprint edge cannot connect a node to itself.');
       }
+      if (document.nodes.find(({ id }) => id === command.edge.targetId)?.kind === 'start') {
+        throw new Error('开始模块不能接收连线。');
+      }
+      if (document.nodes.find(({ id }) => id === command.edge.sourceId)?.kind === 'end') {
+        throw new Error('结束模块不能发出连线。');
+      }
+      if (command.edge.relation !== 'handoff') {
+        throw new Error('Blueprint edges must be handoff connections.');
+      }
       next = { ...document, edges: [...document.edges, command.edge] };
       break;
     case 'edge.delete':
       assertItemExists(document.edges, command.edgeId, 'edge');
       next = { ...document, edges: document.edges.filter((edge) => edge.id !== command.edgeId) };
       break;
+    case 'scene.entity-create': {
+      assertUniqueId(document.scene.entities, command.entity.id, 'scene entity');
+      if (
+        command.entity.kind === 'robot-start' &&
+        document.scene.entities.some(({ kind }) => kind === 'robot-start')
+      ) {
+        throw new Error('The test field can only have one robot start.');
+      }
+      assertNonEmpty(command.entity.label, 'Scene entity label');
+      next = {
+        ...document,
+        scene: {
+          ...document.scene,
+          entities: [
+            ...document.scene.entities,
+            clampSceneEntity(document.scene, {
+              ...command.entity,
+              label: command.entity.label.trim(),
+              meaning: command.entity.meaning.trim(),
+            }),
+          ],
+        },
+      };
+      break;
+    }
+    case 'scene.entity-update': {
+      assertNonEmpty(command.label, 'Scene entity label');
+      next = {
+        ...document,
+        scene: {
+          ...document.scene,
+          entities: replaceSceneEntity(document, command.entityId, (entity) =>
+            clampSceneEntity(document.scene, {
+              ...entity,
+              label: command.label.trim(),
+              meaning: command.meaning.trim(),
+              size: command.size,
+              rotation: command.rotation,
+            }),
+          ),
+        },
+      };
+      break;
+    }
+    case 'scene.entity-move':
+      next = {
+        ...document,
+        scene: {
+          ...document.scene,
+          entities: replaceSceneEntity(document, command.entityId, (entity) =>
+            clampSceneEntity(document.scene, { ...entity, position: command.position }),
+          ),
+        },
+      };
+      break;
+    case 'scene.entity-delete':
+      assertItemExists(document.scene.entities, command.entityId, 'scene entity');
+      next = {
+        ...document,
+        scene: {
+          ...document.scene,
+          entities: document.scene.entities.filter(({ id }) => id !== command.entityId),
+        },
+        experimentExpectations: document.experimentExpectations.filter(
+          (expectation) =>
+            (expectation.kind !== 'reach-target' && expectation.kind !== 'speech-after-target') ||
+            expectation.targetEntityId !== command.entityId,
+        ),
+      };
+      break;
+    case 'scene.clear':
+      next = { ...document, scene: createEmptySceneDefinition(), experimentExpectations: [] };
+      break;
+    case 'experiment.expectations-set': {
+      const kinds = command.expectations.map(({ kind }) => kind);
+      if (new Set(kinds).size !== kinds.length) {
+        throw new Error('Each experiment expectation kind can only be used once.');
+      }
+      for (const expectation of command.expectations) {
+        if (!expectation.id.trim()) throw new Error('Experiment expectation id cannot be empty.');
+        if (
+          (expectation.kind === 'reach-target' || expectation.kind === 'speech-after-target') &&
+          !document.scene.entities.some(
+            (entity) => entity.id === expectation.targetEntityId && entity.kind === 'target-landmark',
+          )
+        ) {
+          throw new Error('Experiment target must reference a target landmark.');
+        }
+        if (
+          (expectation.kind === 'say-text' || expectation.kind === 'speech-after-target') &&
+          !expectation.text.trim()
+        ) {
+          throw new Error('Expected speech cannot be empty.');
+        }
+      }
+      next = {
+        ...document,
+        experimentExpectations: command.expectations.map((expectation) =>
+          expectation.kind === 'say-text' || expectation.kind === 'speech-after-target'
+            ? { ...expectation, text: expectation.text.trim() }
+            : expectation,
+        ),
+      };
+      break;
+    }
+    case 'workflow.prepare':
+      next = {
+        ...document,
+        workflow: { ...command.workflow, blueprintRevisionId: command.revision.id },
+      };
+      break;
+    case 'workflow.delivery-submit': {
+      assertUniqueId(document.deliveries, command.delivery.id, 'delivery');
+      if (command.delivery.assignmentId !== command.assignmentId) {
+        throw new Error('Delivery assignment does not match workflow build.');
+      }
+      next = {
+        ...document,
+        assignments: replaceAssignment(document.assignments, command.assignmentId, (assignment) => {
+          assertAssignmentStatus(assignment.status, ['working', 'accepted']);
+          if (
+            command.delivery.artifact.sourceAssignmentId !== assignment.id ||
+            command.delivery.artifact.sourceContractRevision !== assignment.contract.revision
+          ) {
+            throw new Error('Workflow delivery does not match the current assignment contract.');
+          }
+          return { ...assignment, status: 'awaiting-review' };
+        }),
+        deliveries: [...document.deliveries, command.delivery],
+      };
+      break;
+    }
     case 'assignment.create': {
       assertUniqueId(document.assignments, command.assignment.id, 'assignment');
       const node = document.nodes.find(({ id }) => id === command.assignment.nodeId);
@@ -227,7 +391,10 @@ export function applyBlueprintCommand(
           assertAssignmentStatus(assignment.status, ['draft', 'awaiting-confirmation']);
           return {
             ...assignment,
-            contract: command.contract,
+            contract: {
+              ...command.contract,
+              revision: assignment.contract.revision + 1,
+            },
             status: 'draft',
             restatement: undefined,
           };
@@ -312,7 +479,39 @@ export function applyBlueprintCommand(
       break;
   }
 
+  if (command.type !== 'workflow.prepare' && invalidatesWorkflow(command.type)) {
+    next = { ...next, workflow: undefined };
+  }
   return { ...next, revisions: [...next.revisions, command.revision] };
+}
+
+function invalidatesWorkflow(type: BlueprintCommand['type']): boolean {
+  return [
+    'document.clear',
+    'node.create',
+    'node.update',
+    'node.delete',
+    'edge.create',
+    'edge.delete',
+    'workflow.delivery-submit',
+    'assignment.create',
+    'assignment.contract-update',
+    'assignment.reopen',
+    'assignment.delivery-submit',
+    'assignment.accept',
+    'assignment.return',
+    'assignment.resubmit',
+  ].includes(type);
+}
+
+function createDefaultControlSettings(): NonNullable<BlueprintNode['control']> {
+  return {
+    trigger: 'manual',
+    inputInformation: '',
+    handoffInformation: '',
+    completionCondition: '',
+    finishAction: 'stop',
+  };
 }
 
 function replaceStrokeReferences(
@@ -341,7 +540,6 @@ function deleteNode(document: BlueprintDocument, nodeId: string): BlueprintDocum
       .filter((node) => node.id !== nodeId)
       .map((node) => (node.parentId === nodeId ? withoutParent(node) : node)),
     edges: document.edges.filter((edge) => edge.sourceId !== nodeId && edge.targetId !== nodeId),
-    planSteps: document.planSteps.filter((step) => step.nodeId !== nodeId),
     assignments: document.assignments.filter((assignment) => !assignmentIds.has(assignment.id)),
     deliveries: document.deliveries.filter((delivery) => !deliveryIds.has(delivery.id)),
     assignmentReviews: document.assignmentReviews.filter(
@@ -447,6 +645,17 @@ function replaceNode(
 ): BlueprintNode[] {
   assertNodeExists(nodes, nodeId);
   return nodes.map((node) => (node.id === nodeId ? transform(node) : node));
+}
+
+function replaceSceneEntity(
+  document: BlueprintDocument,
+  entityId: string,
+  transform: (entity: BlueprintDocument['scene']['entities'][number]) => BlueprintDocument['scene']['entities'][number],
+): BlueprintDocument['scene']['entities'] {
+  assertItemExists(document.scene.entities, entityId, 'scene entity');
+  return document.scene.entities.map((entity) =>
+    entity.id === entityId ? transform(entity) : entity,
+  );
 }
 
 function withoutParent(node: BlueprintNode): BlueprintNode {

@@ -12,6 +12,10 @@ export function StartNodeView(props: NodeProps<BlueprintFlowNode>) {
   return <NodeShell {...props} badge="启动" />;
 }
 
+export function EndNodeView(props: NodeProps<BlueprintFlowNode>) {
+  return <NodeShell {...props} badge="结束" />;
+}
+
 export function ArtifactNodeView(props: NodeProps<BlueprintFlowNode>) {
   return <NodeShell {...props} badge="成果" />;
 }
@@ -42,20 +46,23 @@ function NodeShell({ id, data, selected, badge }: NodeProps<BlueprintFlowNode> &
           ? '双击进入子系统'
           : data.kind === 'start'
             ? '程序从这里开始 · 双击编辑'
+            : data.kind === 'end'
+              ? '任务在这里完成 · 双击编辑'
             : '双击编辑模块'}
       </small>
+      {data.controlSummary && <span className="engineering-node-control-summary">{data.controlSummary}</span>}
       {data.assignmentStatus && (
         <span className="engineering-node-assignment-state">
           {data.assignmentStatus === 'awaiting-review'
             ? '等待总工程师验收'
             : data.assignmentStatus === 'working'
-              ? 'Agent 工作中'
+              ? '已派工 · 等待轮到他'
               : data.assignmentStatus === 'accepted'
                 ? '已验收'
                 : '已分配 Agent'}
         </span>
       )}
-      <Handle type="source" position={Position.Right} />
+      {data.kind !== 'end' && <Handle type="source" position={Position.Right} />}
     </div>
   );
 }

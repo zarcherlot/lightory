@@ -7,7 +7,7 @@
   "goalPrompt": "怎样证明小车是在正确的展品前开始讲解？",
   "availableToolIds": ["voice", "basic-movement"],
   "availableAgentIds": ["route-engineer", "voice-engineer"],
-  "stageGates": ["goal", "architecture", "assignment", "plan", "test"],
+  "stageGates": ["goal", "architecture", "assignment", "build", "test"],
   "testScenarioIds": ["museum-guide-basic"],
   "faultScenarioIds": ["museum-voice-wrong-order"],
   "successCriteria": [

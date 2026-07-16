@@ -2,7 +2,6 @@ import { CheckCircle, ClipboardText, Robot, X } from '@phosphor-icons/react';
 import { useEffect, useMemo, useState } from 'react';
 
 import {
-  createMockDelivery,
   createMockRestatement,
   validateAgentTaskContract,
 } from '../agents/index.js';
@@ -10,6 +9,7 @@ import type { BlueprintCommandInput } from '../domain/commands.js';
 import type {
   AgentAssignment,
   AgentDefinition,
+  AgentDelivery,
   AgentTaskContract,
   BlueprintDocument,
   ToolDefinition,
@@ -62,22 +62,6 @@ export function AssignmentDrawer({
     setCriteriaDraft(assignment.contract.acceptanceCriteria.join('\n'));
   }, [assignment.contract, assignment.id, assignment.status]);
   useEffect(() => setReturnComment(''), [latestDelivery?.id]);
-
-  useEffect(() => {
-    if (assignment.status !== 'working') return;
-    const timer = window.setTimeout(() => {
-      const lastReturn = [...reviews].reverse().find(({ decision }) => decision === 'returned');
-      const delivery = createMockDelivery(
-        createP2Id('delivery'),
-        agent,
-        assignment,
-        deliveries,
-        lastReturn?.comment,
-      );
-      onCommand({ type: 'assignment.delivery-submit', assignmentId: assignment.id, delivery });
-    }, 750);
-    return () => window.clearTimeout(timer);
-  }, [agent, assignment, deliveries, onCommand, reviews]);
 
   const inputOptions = useMemo(
     () => document.nodes.filter(({ id }) => id !== assignment.nodeId),
@@ -143,7 +127,7 @@ export function AssignmentDrawer({
               onClick={() => onCommand({ type: 'assignment.confirm', assignmentId: assignment.id })}
               type="button"
             >
-              理解正确，开始工作
+              批准任务并派工
             </button>
             <button
               className="is-ghost"
@@ -163,10 +147,10 @@ export function AssignmentDrawer({
       )}
 
       {assignment.status === 'working' && (
-        <section className="engineering-agent-working">
+        <section className="engineering-agent-ready">
           <Robot size={34} weight="duotone" />
-          <strong>{agent.name}正在整理草案…</strong>
-          <span>它只能处理你确认过的任务合同。</span>
+          <strong>任务已经批准</strong>
+          <span>{agent.name}会在需要的上游结果准备好后自动开始；你可以关闭这里继续安排工程。</span>
         </section>
       )}
 
@@ -177,9 +161,10 @@ export function AssignmentDrawer({
           <section className="engineering-delivery-review">
             <div className="engineering-delivery-heading">
               <ClipboardText size={20} />
-              <strong>交付草案 v{latestDelivery.version}</strong>
+              <strong>工程师方案 v{latestDelivery.version}</strong>
             </div>
             <p>{latestDelivery.summary}</p>
+            <DetailList title="工程师准备怎样做" items={readPlanDetails(latestDelivery)} />
             <DetailList title="假设" items={latestDelivery.assumptions} />
             <DetailList title="不确定项" items={latestDelivery.uncertainties} />
             <DetailList title="覆盖的验收标准" items={readCoverage(latestDelivery.artifact)} />
@@ -213,7 +198,7 @@ export function AssignmentDrawer({
                     }
                     type="button"
                   >
-                    <CheckCircle size={16} /> 接受交付
+                    <CheckCircle size={16} /> 方案通过
                   </button>
                   <button
                     className="is-return"
@@ -235,7 +220,7 @@ export function AssignmentDrawer({
                     }
                     type="button"
                   >
-                    退回修改
+                    指出问题，请他修改
                   </button>
                 </div>
               </>
@@ -414,10 +399,35 @@ function lines(value: string): string[] {
 function toggleId(ids: string[], id: string): string[] {
   return ids.includes(id) ? ids.filter((item) => item !== id) : [...ids, id];
 }
-function readCoverage(artifact: Record<string, unknown>): string[] {
-  return Array.isArray(artifact.acceptanceCoverage)
-    ? artifact.acceptanceCoverage.filter((item): item is string => typeof item === 'string')
+function readCoverage(artifact: AgentDelivery['artifact']): string[] {
+  return Array.isArray(artifact.payload.acceptanceCoverage)
+    ? artifact.payload.acceptanceCoverage.filter((item): item is string => typeof item === 'string')
     : [];
+}
+
+function readPlanDetails(delivery: AgentDelivery): string[] {
+  const { artifact } = delivery;
+  if (artifact.schemaId.endsWith('/movement-v1') && Array.isArray(artifact.payload.actions)) {
+    return artifact.payload.actions.flatMap((action) => {
+      if (!action || typeof action !== 'object') return [];
+      const value = action as Record<string, unknown>;
+      if (value.type === 'driveDistance' && typeof value.distanceMeters === 'number') {
+        return [`${value.distanceMeters >= 0 ? '前进' : '后退'} ${Math.abs(value.distanceMeters)} 米`];
+      }
+      if (value.type === 'rotateAngle' && typeof value.angleRad === 'number') {
+        const degrees = Math.round((Math.abs(value.angleRad) * 180) / Math.PI);
+        return [`${value.angleRad >= 0 ? '左转' : '右转'} ${degrees} 度`];
+      }
+      return [];
+    });
+  }
+  if (artifact.schemaId.endsWith('/speech-v1')) {
+    const text = typeof artifact.payload.text === 'string' ? artifact.payload.text : '';
+    const timing = artifact.payload.trigger === 'after-input' ? '收到上游结果后' : '任务开始时';
+    return text ? [`${timing}说：“${text}”`] : ['没有写清要说的话'];
+  }
+  const outputs = artifact.payload.outputs;
+  return Array.isArray(outputs) ? outputs.filter((item): item is string => typeof item === 'string') : [artifact.childSummary];
 }
 function createP2Id(prefix: string): string {
   const suffix =

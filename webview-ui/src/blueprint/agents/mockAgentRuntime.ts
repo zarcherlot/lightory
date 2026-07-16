@@ -53,11 +53,19 @@ export function createMockDelivery(
       ? ['修改已写入草案，但是否满足全部条件仍需总工程师复核。']
       : [agent.knownLimitations[0] ?? '可能遗漏任务合同中的一个边界条件。'],
     artifact: {
-      goal: assignment.contract.goal,
-      outputs: assignment.contract.expectedOutputs,
-      toolIds: assignment.contract.toolIds,
-      acceptanceCoverage,
-      revisionComment: returnComment ?? '',
+      schemaId: 'lightory.agent-artifact/mock-v1',
+      payload: {
+        goal: assignment.contract.goal,
+        outputs: assignment.contract.expectedOutputs,
+        toolIds: assignment.contract.toolIds,
+        acceptanceCoverage,
+        revisionComment: returnComment ?? '',
+      },
+      childSummary: `${agent.name}交付了${assignment.contract.expectedOutputs.join('、') || '任务结果'}。`,
+      assumptions: [`只使用合同允许的 Tool：${assignment.contract.toolIds.join('、')}`],
+      inputArtifactIds: [],
+      sourceAssignmentId: assignment.id,
+      sourceContractRevision: assignment.contract.revision,
     },
     status: 'draft',
   };

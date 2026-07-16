@@ -21,7 +21,8 @@ const triggerEdge: BlueprintEdge = {
   id: 'move-to-voice',
   sourceId: 'move',
   targetId: 'voice',
-  relation: 'trigger',
+  relation: 'handoff',
+  handoffKind: 'completion',
   sourceStrokeIds: [],
 };
 
@@ -97,13 +98,47 @@ test('supports a start module as the source of the program flow', () => {
       id: 'start-to-move',
       sourceId: 'start',
       targetId: 'move',
-      relation: 'trigger',
+      relation: 'handoff',
+      handoffKind: 'completion',
       sourceStrokeIds: [],
     },
   });
 
   assert.equal(state.present.nodes[0]?.kind, 'start');
   assert.equal(state.present.edges[0]?.sourceId, 'start');
+});
+
+test('supports an editable end module and enforces control-node connection direction', () => {
+  let state = createBlueprintHistoryState(createEmptyBlueprintDocument());
+  const start = node('start-control', 'start', '开始', 20, 180);
+  const end = node('end-control', 'end', '结束', 620, 180);
+  state = run(state, { type: 'node.create', node: start });
+  state = run(state, { type: 'node.create', node: moveNode });
+  state = run(state, { type: 'node.create', node: end });
+  state = run(state, {
+    type: 'node.update',
+    nodeId: end.id,
+    label: '找到宝藏',
+    kind: 'end',
+    control: {
+      trigger: 'manual',
+      inputInformation: '收到到达结果',
+      handoffInformation: '',
+      completionCondition: '小车到达宝藏位置',
+      finishAction: 'stop',
+    },
+  });
+  state = run(state, { type: 'edge.create', edge: { ...triggerEdge, id: 'move-to-end', targetId: end.id } });
+
+  assert.equal(state.present.nodes.find(({ id }) => id === end.id)?.control?.completionCondition, '小车到达宝藏位置');
+  assert.throws(
+    () => run(state, { type: 'edge.create', edge: { ...triggerEdge, id: 'end-to-move', sourceId: end.id, targetId: moveNode.id } }),
+    /结束模块不能发出连线/,
+  );
+  assert.throws(
+    () => run(state, { type: 'edge.create', edge: { ...triggerEdge, id: 'move-to-start', sourceId: moveNode.id, targetId: start.id } }),
+    /开始模块不能接收连线/,
+  );
 });
 
 test('rejects invalid node containment and missing edge endpoints', () => {

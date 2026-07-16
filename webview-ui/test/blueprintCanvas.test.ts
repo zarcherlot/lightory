@@ -147,7 +147,8 @@ test('eraser detects a connection between two modules', () => {
     id: 'edge',
     sourceId: 'move',
     targetId: 'voice',
-    relation: 'data' as const,
+    relation: 'handoff' as const,
+    handoffKind: 'artifact' as const,
     sourceStrokeIds: [],
   };
   const matches = findEdgesIntersectingEraser(

@@ -37,11 +37,13 @@ export function createDraftAssignment(
 
 export function emptyAgentTaskContract(toolIds: string[] = []): AgentTaskContract {
   return {
+    revision: 1,
     goal: '',
     inputNodeIds: [],
     expectedOutputs: [],
     acceptanceCriteria: [],
     toolIds,
+    evidenceIds: [],
   };
 }
 

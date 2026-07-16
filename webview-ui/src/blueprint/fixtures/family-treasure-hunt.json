@@ -7,12 +7,12 @@
   "goalPrompt": "小车做到什么，才算真的找到宝藏？",
   "availableToolIds": ["voice", "basic-movement"],
   "availableAgentIds": ["route-engineer", "voice-engineer"],
-  "stageGates": ["goal", "architecture", "assignment", "plan", "test"],
+  "stageGates": ["goal", "architecture", "assignment", "build", "test"],
   "testScenarioIds": ["family-treasure-hunt-basic"],
   "faultScenarioIds": ["family-route-wrong-angle"],
   "successCriteria": [
     "孩子定义了找到宝藏的可观察标准",
-    "移动先于语音并经过检查点",
+    "移动结果通过交付连接在正确时机触发语音",
     "孩子根据证据修复一次 Agent 错误并复验成功"
   ]
 }

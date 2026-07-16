@@ -52,15 +52,17 @@ test('rejects corrupted persisted documents', async () => {
   await assert.rejects(() => repository.load('malformed-node'), BlueprintRepositoryError);
 });
 
-test('migrates a valid P1 document by adding P2 review collections', async () => {
+test('migrates a valid older document by adding review and experiment collections', async () => {
   const storage = new MemoryStorage();
   const legacy = createEmptyBlueprintDocument() as unknown as Record<string, unknown>;
   delete legacy.assignmentReviews;
+  delete legacy.experimentExpectations;
   storage.setItem('lightory.blueprint.v1:legacy', JSON.stringify(legacy));
   const repository = new LocalStorageBlueprintRepository(storage);
 
   const loaded = await repository.load('legacy');
   assert.deepEqual(loaded?.assignmentReviews, []);
+  assert.deepEqual(loaded?.experimentExpectations, []);
 });
 
 class MemoryStorage implements StorageLike {

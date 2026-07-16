@@ -6,10 +6,14 @@ export interface BlueprintFlowNodeData extends Record<string, unknown> {
   label: string;
   kind: BlueprintNode['kind'];
   assignmentStatus?: BlueprintDocument['assignments'][number]['status'];
+  controlSummary?: string;
 }
 
 export type BlueprintFlowNode = Node<BlueprintFlowNodeData>;
-export type BlueprintFlowEdge = Edge<{ relation: BlueprintEdge['relation'] }>;
+export type BlueprintFlowEdge = Edge<{
+  relation: BlueprintEdge['relation'];
+  handoffKind: BlueprintEdge['handoffKind'];
+}>;
 
 export interface BlueprintFlowProjection {
   nodes: BlueprintFlowNode[];
@@ -41,6 +45,7 @@ export function projectBlueprintToFlow(
         label: node.label,
         kind: node.kind,
         assignmentStatus: assignmentByNode.get(node.id)?.status,
+        controlSummary: describeControl(node),
       },
       style: { width: node.size.width, height: node.size.height },
       zIndex: node.kind === 'container' ? 0 : 2,
@@ -50,12 +55,22 @@ export function projectBlueprintToFlow(
       source: edge.sourceId,
       target: edge.targetId,
       type: 'smoothstep',
-      animated: edge.relation === 'trigger',
-      label: edge.label ?? (edge.relation === 'trigger' ? '触发' : '数据'),
+      animated: edge.handoffKind === 'completion',
+      label: edge.label ?? (edge.handoffKind === 'completion' ? '完成消息' : '交付成果'),
       markerEnd: { type: MarkerType.ArrowClosed },
-      data: { relation: edge.relation },
+      data: { relation: edge.relation, handoffKind: edge.handoffKind },
     })),
   };
+}
+
+function describeControl(node: BlueprintNode): string | undefined {
+  if (node.kind === 'start') {
+    return node.control?.handoffInformation.trim() || node.control?.inputInformation.trim() || undefined;
+  }
+  if (node.kind === 'end') {
+    return node.control?.completionCondition.trim() || node.control?.inputInformation.trim() || '完成后安全停车';
+  }
+  return undefined;
 }
 
 export function toScopePosition(

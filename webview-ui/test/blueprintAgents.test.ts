@@ -8,10 +8,12 @@ import {
   createMockRestatement,
   validateAgentTaskContract,
 } from '../src/blueprint/agents/index.js';
+import { assignmentStatusLabel } from '../src/blueprint/components/agentPresentation.js';
 import type { BlueprintCommand, BlueprintCommandInput } from '../src/blueprint/domain/commands.js';
 import {
   createEmptyBlueprintDocument,
   migrateBlueprintDocument,
+  validateBlueprintDocument,
 } from '../src/blueprint/domain/document.js';
 import {
   blueprintHistoryReducer,
@@ -50,6 +52,10 @@ const tool: ToolDefinition = {
   safetyConstraints: [],
 };
 
+test('presents confirmed assignments as waiting for the chief engineer, not already working', () => {
+  assert.equal(assignmentStatusLabel('working'), '已派工');
+});
+
 test('runs the assignment confirmation, return, resubmit and acceptance state machine', () => {
   let state = createBlueprintHistoryState(createEmptyBlueprintDocument());
   state = run(state, { type: 'node.create', node });
@@ -59,11 +65,13 @@ test('runs the assignment confirmation, return, resubmit and acceptance state ma
     1,
   );
   assignment.contract = {
+    revision: 1,
     goal: '规划到宝藏点的移动路线',
     inputNodeIds: [],
     expectedOutputs: ['移动步骤和转向参数'],
     acceptanceCriteria: ['到达目标位置', '转向后朝向正确'],
     toolIds: ['basic-movement'],
+    evidenceIds: [],
   };
   state = run(state, { type: 'assignment.create', assignment });
   const restatement = createMockRestatement(agent, assignment, []);
@@ -201,6 +209,60 @@ test('migrates a P1 blueprint without assignment reviews', () => {
   const migrated = migrateBlueprintDocument(legacy) as Record<string, unknown>;
   assert.deepEqual(migrated.assignmentReviews, []);
   assert.equal((migrated.assignments as Array<Record<string, unknown>>)[0]?.createdAt, 0);
+});
+
+test('migrates legacy plan edges, contracts and delivery payloads into P3 artifacts', () => {
+  const legacy = createEmptyBlueprintDocument() as unknown as Record<string, unknown>;
+  legacy.nodes = [node];
+  legacy.edges = [
+    {
+      id: 'legacy-edge',
+      sourceId: 'move',
+      targetId: 'move',
+      relation: 'trigger',
+      sourceStrokeIds: [],
+    },
+  ];
+  legacy.planSteps = [{ id: 'step', nodeId: 'move', dependsOn: [], checkpoint: true }];
+  legacy.assignments = [
+    {
+      id: 'legacy-assignment',
+      nodeId: 'move',
+      agentId: 'route-engineer',
+      status: 'accepted',
+      contract: {
+        goal: '移动',
+        inputNodeIds: [],
+        expectedOutputs: ['路线'],
+        acceptanceCriteria: ['到达'],
+        toolIds: ['basic-movement'],
+      },
+      createdAt: 1,
+    },
+  ];
+  legacy.deliveries = [
+    {
+      id: 'legacy-delivery',
+      assignmentId: 'legacy-assignment',
+      version: 1,
+      summary: '旧交付',
+      assumptions: [],
+      uncertainties: [],
+      artifact: { turnAngle: 60 },
+      status: 'accepted',
+    },
+  ];
+
+  const migrated = migrateBlueprintDocument(legacy) as Record<string, unknown>;
+  const migratedEdge = (migrated.edges as Array<Record<string, unknown>>)[0]!;
+  const migratedAssignment = (migrated.assignments as Array<Record<string, unknown>>)[0]!;
+  const migratedDelivery = (migrated.deliveries as Array<Record<string, unknown>>)[0]!;
+  assert.equal(migrated.planSteps, undefined);
+  assert.equal(migratedEdge.relation, 'handoff');
+  assert.equal(migratedEdge.handoffKind, 'completion');
+  assert.equal((migratedAssignment.contract as Record<string, unknown>).revision, 1);
+  assert.equal((migratedDelivery.artifact as Record<string, unknown>).schemaId, 'lightory.agent-artifact/legacy-v1');
+  assert.deepEqual(validateBlueprintDocument(migrated), []);
 });
 
 function run(state: BlueprintHistoryState, command: BlueprintCommandInput): BlueprintHistoryState {

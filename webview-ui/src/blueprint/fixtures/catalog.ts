@@ -54,13 +54,13 @@ export const blueprintFixtureCatalog: BlueprintCatalog = {
       id: 'family-treasure-hunt-basic',
       name: '家庭寻宝基础模拟',
       requiredToolIds: ['basic-movement', 'voice'],
-      successCriteria: ['小车按计划移动后再播报线索', '运行经过孩子设置的检查点'],
+      successCriteria: ['小车按蓝图移动后再播报线索', '交付连接产生正确的动作顺序'],
     },
     {
       id: 'museum-guide-basic',
       name: '博物馆导览基础模拟',
       requiredToolIds: ['basic-movement', 'voice'],
-      successCriteria: ['小车到达展品位置后再开始讲解', '运行经过孩子设置的检查点'],
+      successCriteria: ['小车到达展品位置后再开始讲解', '交付连接产生正确的动作顺序'],
     },
   ],
   faults: [
@@ -69,7 +69,7 @@ export const blueprintFixtureCatalog: BlueprintCatalog = {
       agentId: 'route-engineer',
       type: 'wrong-parameter',
       observableEvidence: ['预期转向 90 度', '里程计记录实际转向 60 度'],
-      repairCriteria: ['转向参数改为 90 度', '重新运行受影响路径并通过检查点'],
+      repairCriteria: ['转向参数改为 90 度', '重新构建受影响路径并通过复验'],
       debrief: '路线工程师把转向角度写错了；证据来自预期和里程计结果的首次差异。',
     },
     {

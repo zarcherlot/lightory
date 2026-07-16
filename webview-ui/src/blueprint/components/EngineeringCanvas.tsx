@@ -51,7 +51,6 @@ import type {
   BlueprintDocument,
   BlueprintNode,
   BlueprintNodeKind,
-  BlueprintRelation,
   InkPoint,
   InkStroke,
   ToolDefinition,
@@ -60,7 +59,7 @@ import { AgentDetailPanel } from './AgentDetailPanel.js';
 import { AgentDock } from './AgentDock.js';
 import { AssignmentDrawer } from './AssignmentDrawer.js';
 import { BlueprintNodeActionsContext } from './BlueprintNodeActions.js';
-import { ArtifactNodeView, ContainerNodeView, FunctionNodeView, StartNodeView } from './BlueprintNodeViews.js';
+import { ArtifactNodeView, ContainerNodeView, EndNodeView, FunctionNodeView, StartNodeView } from './BlueprintNodeViews.js';
 
 export type CanvasTool = 'select' | 'pen' | 'eraser' | 'connector';
 
@@ -83,6 +82,7 @@ interface PendingConnection {
 
 const nodeTypes = {
   start: StartNodeView,
+  end: EndNodeView,
   function: FunctionNodeView,
   artifact: ArtifactNodeView,
   container: ContainerNodeView,
@@ -113,6 +113,7 @@ export function EngineeringCanvas(props: EngineeringCanvasProps) {
     id: string;
     label: string;
     kind: BlueprintNodeKind;
+    control?: BlueprintNode['control'];
   } | null>(null);
   const [agentDockExpanded, setAgentDockExpanded] = useState(true);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
@@ -198,14 +199,19 @@ export function EngineeringCanvas(props: EngineeringCanvasProps) {
       const node: BlueprintNode = {
         id,
         kind,
-        label: kind === 'start' && candidateLabel.trim() === '新模块' ? '开始' : candidateLabel.trim(),
+        label: kind === 'start' && candidateLabel.trim() === '新模块'
+          ? '开始'
+          : kind === 'end' && candidateLabel.trim() === '新模块'
+            ? '结束'
+            : candidateLabel.trim(),
         position: fromScopePosition({ x: bounds.x, y: bounds.y }, currentScopeId, props.document.nodes),
         size: {
-          width: Math.max(kind === 'artifact' ? 130 : kind === 'start' ? 140 : 170, bounds.width),
-          height: Math.max(kind === 'artifact' ? 130 : kind === 'start' ? 90 : 110, bounds.height),
+          width: Math.max(kind === 'artifact' ? 130 : kind === 'start' || kind === 'end' ? 160 : 170, bounds.width),
+          height: Math.max(kind === 'artifact' ? 130 : kind === 'start' || kind === 'end' ? 110 : 110, bounds.height),
         },
         sourceStrokeIds: [],
         recognition: { source: 'web', confidence: candidate.confidence },
+        ...(kind === 'start' || kind === 'end' ? { control: createDefaultControlSettings() } : {}),
         ...(currentScopeId ? { parentId: currentScopeId } : {}),
       };
       props.onCommand({ type: 'node.create', node });
@@ -242,7 +248,7 @@ export function EngineeringCanvas(props: EngineeringCanvasProps) {
   }, [candidate, visibleNodes]);
 
   const confirmConnection = useCallback(
-    (relation: BlueprintRelation) => {
+    (handoffKind: 'artifact' | 'completion') => {
       if (!pendingConnection) return;
       props.onCommand({
         type: 'edge.create',
@@ -250,7 +256,8 @@ export function EngineeringCanvas(props: EngineeringCanvasProps) {
           id: createId('edge'),
           sourceId: pendingConnection.sourceId,
           targetId: pendingConnection.targetId,
-          relation,
+          relation: 'handoff',
+          handoffKind,
           sourceStrokeIds: pendingConnection.sourceStrokeIds,
         },
       });
@@ -370,7 +377,7 @@ export function EngineeringCanvas(props: EngineeringCanvasProps) {
         onNodeDoubleClick={(_event, flowNode) => {
           const node = props.document.nodes.find(({ id }) => id === flowNode.id);
           if (node?.kind === 'container') setCurrentScopeId(node.id);
-          else if (node) setEditingNode({ id: node.id, label: node.label, kind: node.kind });
+          else if (node) setEditingNode({ id: node.id, label: node.label, kind: node.kind, control: node.control });
         }}
         onNodeClick={(_event, flowNode) => {
           if (selectedAgentId) {
@@ -475,11 +482,11 @@ export function EngineeringCanvas(props: EngineeringCanvasProps) {
           <strong>这条连线表示什么？</strong>
           <span>总工程师需要明确模块之间的交付。</span>
           <div>
-            <button onClick={() => confirmConnection('trigger')} type="button">
-              触发
+            <button onClick={() => confirmConnection('completion')} type="button">
+              完成消息
             </button>
-            <button onClick={() => confirmConnection('data')} type="button">
-              数据
+            <button onClick={() => confirmConnection('artifact')} type="button">
+              交付成果
             </button>
             <button className="is-ghost" onClick={() => setPendingConnection(null)} type="button">
               取消
@@ -522,6 +529,7 @@ export function EngineeringCanvas(props: EngineeringCanvasProps) {
               nodeId: editingNode.id,
               label: editingNode.label,
               kind: editingNode.kind,
+              control: editingNode.control,
             });
             setEditingNode(null);
           }}
@@ -855,19 +863,22 @@ function InkRenderer({
   );
 }
 
+type NodeEditDraft = { id: string; label: string; kind: BlueprintNodeKind; control?: BlueprintNode['control'] };
+
 function NodeEditDialog({
   draft,
   onChange,
   onSave,
   onCancel,
 }: {
-  draft: { id: string; label: string; kind: BlueprintNodeKind };
-  onChange: (draft: { id: string; label: string; kind: BlueprintNodeKind }) => void;
+  draft: NodeEditDraft;
+  onChange: (draft: NodeEditDraft) => void;
   onSave: () => void;
   onCancel: () => void;
 }) {
   const kinds: Array<{ id: BlueprintNodeKind; label: string }> = [
     { id: 'start', label: '开始模块' },
+    { id: 'end', label: '结束模块' },
     { id: 'function', label: '功能模块' },
     { id: 'artifact', label: '成果节点' },
     { id: 'container', label: '子系统' },
@@ -892,7 +903,13 @@ function NodeEditDialog({
                 aria-pressed={draft.kind === kind.id}
                 className={draft.kind === kind.id ? 'is-active' : ''}
                 key={kind.id}
-                onClick={() => onChange({ ...draft, kind: kind.id })}
+                onClick={() => onChange({
+                  ...draft,
+                  kind: kind.id,
+                  control: kind.id === 'start' || kind.id === 'end'
+                    ? draft.control ?? createDefaultControlSettings()
+                    : undefined,
+                })}
                 type="button"
               >
                 {kind.label}
@@ -900,6 +917,9 @@ function NodeEditDialog({
             ))}
           </div>
         </fieldset>
+        {(draft.kind === 'start' || draft.kind === 'end') && (
+          <ControlSettingsEditor draft={draft} onChange={onChange} />
+        )}
         <small>提示：选择工具下双击模块，可以随时再次编辑。</small>
         <div className="engineering-node-edit-actions">
           <button disabled={!draft.label.trim()} onClick={onSave} type="button">
@@ -911,6 +931,29 @@ function NodeEditDialog({
         </div>
       </div>
     </div>
+  );
+}
+
+function ControlSettingsEditor({ draft, onChange }: { draft: NodeEditDraft; onChange: (draft: NodeEditDraft) => void }) {
+  const control = draft.control ?? createDefaultControlSettings();
+  const update = (changes: Partial<typeof control>) => onChange({ ...draft, control: { ...control, ...changes } });
+  return (
+    <section className="engineering-control-settings">
+      <strong>{draft.kind === 'start' ? '定义怎样开始' : '定义怎样结束'}</strong>
+      {draft.kind === 'start' && <label>启动方式<input disabled value="总工程师点击启动" /></label>}
+      <label>
+        {draft.kind === 'start' ? '开始时已经知道的信息' : '结束前需要收到的信息'}
+        <textarea rows={2} value={control.inputInformation} onChange={(event) => update({ inputInformation: event.target.value })} />
+      </label>
+      {draft.kind === 'start' ? (
+        <label>交给下一个模块的信息<textarea rows={2} value={control.handoffInformation} onChange={(event) => update({ handoffInformation: event.target.value })} /></label>
+      ) : (
+        <>
+          <label>怎样才算任务完成<textarea rows={2} value={control.completionCondition} onChange={(event) => update({ completionCondition: event.target.value })} /></label>
+          <label>结束动作<input disabled value="安全停车" /></label>
+        </>
+      )}
+    </section>
   );
 }
 
@@ -956,6 +999,7 @@ function RecognitionCard({
                 >
                   开始模块
                 </button>
+                <button disabled={!label.trim()} onClick={() => onCreateNode('end')} type="button">结束模块</button>
                 <button
                   disabled={!label.trim()}
                   onClick={() => onCreateNode('function')}
@@ -998,6 +1042,7 @@ function RecognitionCard({
             <button disabled={!label.trim()} onClick={() => onCreateNode('start')} type="button">
               开始模块
             </button>
+            <button disabled={!label.trim()} onClick={() => onCreateNode('end')} type="button">结束模块</button>
             <button disabled={!label.trim()} onClick={() => onCreateNode('function')} type="button">
               功能模块
             </button>
@@ -1104,4 +1149,14 @@ function createId(prefix: string): string {
       ? crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   return `${prefix}-${id}`;
+}
+
+function createDefaultControlSettings(): NonNullable<BlueprintNode['control']> {
+  return {
+    trigger: 'manual',
+    inputInformation: '',
+    handoffInformation: '',
+    completionCondition: '',
+    finishAction: 'stop',
+  };
 }
