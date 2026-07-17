@@ -13,7 +13,7 @@ import type {
   ChildActionPreview,
 } from './types.js';
 
-const DEFAULT_LINEAR_SPEED_MPS = 0.2;
+const DEFAULT_LINEAR_SPEED_MPS = 0.05;
 const MAX_LINEAR_SPEED_MPS = 0.5;
 const DEFAULT_ANGULAR_SPEED_RADPS = (20 * Math.PI) / 180;
 const MAX_ANGULAR_SPEED_RADPS = Math.PI / 4;
@@ -348,11 +348,12 @@ function compileSpeechArtifact(context: CompileArtifactContext): string[] {
     return [];
   }
   const stepId = context.createId('step');
+  const dependencies = trigger === 'after-input' ? context.dependencyStepIds : [];
   context.steps.push({
     id: stepId,
     tool: 'speech.say',
     args: { text },
-    ...(context.dependencyStepIds.length > 0 ? { dependsOn: context.dependencyStepIds } : {}),
+    ...(dependencies.length > 0 ? { dependsOn: dependencies } : {}),
     timeoutMs: 5_000,
   });
   context.preview.push({
@@ -361,7 +362,7 @@ function compileSpeechArtifact(context: CompileArtifactContext): string[] {
     nodeLabel: context.nodeLabel,
     kind: 'speech',
     description: `播报“${text}”`,
-    dependsOnNodeIds: context.dependsOnNodeIds,
+    dependsOnNodeIds: trigger === 'after-input' ? context.dependsOnNodeIds : [],
   });
   return [stepId];
 }

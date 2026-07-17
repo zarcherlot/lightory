@@ -174,7 +174,22 @@ test('deterministic adapter emits typed actions only when the child contract is 
     workspaceId: 'test-workspace',
   });
   assert.deepEqual(movement.payload.actions, [
-    { type: 'driveDistance', distanceMeters: 1.5 },
+    { type: 'driveDistance', distanceMeters: 1.5, maxSpeedMps: 0.05 },
+    { type: 'rotateAngle', angleRad: -Math.PI / 2 },
+  ]);
+
+  movementContract.goal = '先前进 1.5 米，速度 0.3m/s，再右转 90 度';
+  const repairedMovement = await runtime.execute({
+    agentRole: '移动工程师',
+    assignmentId: 'assignment-move',
+    contract: movementContract,
+    visibleArtifacts: [],
+    allowedToolIds: ['basic-movement'],
+    outputSchema: { $id: MOVEMENT_ARTIFACT_SCHEMA_ID },
+    workspaceId: 'test-workspace',
+  });
+  assert.deepEqual(repairedMovement.payload.actions, [
+    { type: 'driveDistance', distanceMeters: 1.5, maxSpeedMps: 0.3 },
     { type: 'rotateAngle', angleRad: -Math.PI / 2 },
   ]);
 
@@ -192,7 +207,7 @@ test('deterministic adapter emits typed actions only when the child contract is 
 
   const speechContract = assignment('voice').contract;
   speechContract.goal = '播报“找到宝藏啦”';
-  const speech = await runtime.execute({
+  const earlySpeech = await runtime.execute({
     agentRole: '语音工程师',
     assignmentId: 'assignment-voice',
     contract: speechContract,
@@ -201,8 +216,21 @@ test('deterministic adapter emits typed actions only when the child contract is 
     outputSchema: { $id: SPEECH_ARTIFACT_SCHEMA_ID },
     workspaceId: 'test-workspace',
   });
-  assert.equal(speech.payload.text, '找到宝藏啦');
-  assert.equal(speech.payload.trigger, 'after-input');
+  assert.equal(earlySpeech.payload.text, '找到宝藏啦');
+  assert.equal(earlySpeech.payload.trigger, 'start');
+
+  speechContract.goal = '到达目标再触发，播报“找到宝藏啦”';
+  const repairedSpeech = await runtime.execute({
+    agentRole: '语音工程师',
+    assignmentId: 'assignment-voice',
+    contract: speechContract,
+    visibleArtifacts: [],
+    allowedToolIds: ['basic-movement'],
+    outputSchema: { $id: SPEECH_ARTIFACT_SCHEMA_ID },
+    workspaceId: 'test-workspace',
+  });
+  assert.equal(repairedSpeech.payload.text, '找到宝藏啦');
+  assert.equal(repairedSpeech.payload.trigger, 'after-input');
 });
 
 test('executes only the earliest runnable batch and submits drafts for child review', async () => {

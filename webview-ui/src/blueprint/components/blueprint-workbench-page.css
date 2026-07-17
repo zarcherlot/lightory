@@ -11,12 +11,17 @@
   background: var(--eng-bg);
   color: var(--eng-text);
   display: grid;
-  font-family: 'Noto Sans CJK SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+  font-family: 'Noto Sans CJK SC', 'Noto Sans SC', 'Microsoft YaHei', 'PingFang SC', 'Segoe UI', Arial, sans-serif;
   grid-template-rows: 72px 44px minmax(0, 1fr);
   height: 100vh;
   min-height: 640px;
   overflow: hidden;
   width: 100vw;
+}
+
+.engineering-workbench,
+.engineering-workbench * {
+  font-family: 'Noto Sans CJK SC', 'Noto Sans SC', 'Microsoft YaHei', 'PingFang SC', 'Segoe UI', Arial, sans-serif;
 }
 
 .engineering-command-bar {
@@ -224,7 +229,7 @@
   cursor: pointer;
   display: flex;
   font: inherit;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   gap: 5px;
   padding: 5px 9px;
@@ -444,7 +449,7 @@
 }
 
 .engineering-workflow-batches section > div span b { font-size: 11px; }
-.engineering-workflow-batches section > div span small { color: var(--eng-muted); font-size: 8px; }
+.engineering-workflow-batches section > div span small { color: var(--eng-muted); font-size: 11px; }
 
 .engineering-workflow-batches section > div span.is-accepted {
   background: rgba(59, 208, 155, 0.1);
@@ -494,7 +499,7 @@
   border: 1px solid rgba(69, 221, 255, 0.24);
   border-radius: 8px;
   color: var(--eng-cyan-soft);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
   padding: 8px 9px;
 }
@@ -530,8 +535,9 @@
 
 .engineering-canvas-shell .react-flow__edge-text {
   fill: var(--eng-cyan-soft);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 15px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
 }
 
 .engineering-canvas-shell .react-flow__edge-textbg {
@@ -604,7 +610,7 @@
   border-top: 1px solid rgba(69, 221, 255, 0.17);
   color: var(--eng-muted);
   display: grid;
-  font-size: 11px;
+  font-size: 12px;
   gap: 7px;
   margin-top: 3px;
   padding: 9px 3px 2px;
@@ -641,7 +647,7 @@
 }
 
 .engineering-node strong {
-  font-size: 19px;
+  font-size: 20px;
   letter-spacing: 0.03em;
 }
 
@@ -699,7 +705,7 @@
 }
 
 .engineering-node-end .engineering-node-badge { background: #65dbb1; }
-.engineering-node-control-summary { color: #d9f6ed; font-size: 11px; margin-top: 5px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.engineering-node-control-summary { color: #d9f6ed; font-size: 13px; font-weight: 700; margin-top: 5px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .engineering-node-container {
   background: linear-gradient(145deg, rgba(17, 46, 70, 0.96), rgba(7, 25, 43, 0.98));
@@ -720,7 +726,7 @@
   background: var(--eng-cyan);
   border-radius: 999px;
   color: #042033;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 800;
   padding: 2px 7px;
   position: absolute;
@@ -1160,8 +1166,8 @@
   border-radius: 999px;
   bottom: -12px;
   color: white;
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 800;
   padding: 4px 9px;
   position: absolute;
 }

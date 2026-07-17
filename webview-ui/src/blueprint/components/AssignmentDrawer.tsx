@@ -412,7 +412,10 @@ function readPlanDetails(delivery: AgentDelivery): string[] {
       if (!action || typeof action !== 'object') return [];
       const value = action as Record<string, unknown>;
       if (value.type === 'driveDistance' && typeof value.distanceMeters === 'number') {
-        return [`${value.distanceMeters >= 0 ? '前进' : '后退'} ${Math.abs(value.distanceMeters)} 米`];
+        const speed = typeof value.maxSpeedMps === 'number'
+          ? `（速度 ${formatNumber(value.maxSpeedMps)} 米/秒）`
+          : '（速度未说明）';
+        return [`${value.distanceMeters >= 0 ? '前进' : '后退'} ${Math.abs(value.distanceMeters)} 米${speed}`];
       }
       if (value.type === 'rotateAngle' && typeof value.angleRad === 'number') {
         const degrees = Math.round((Math.abs(value.angleRad) * 180) / Math.PI);
@@ -429,6 +432,11 @@ function readPlanDetails(delivery: AgentDelivery): string[] {
   const outputs = artifact.payload.outputs;
   return Array.isArray(outputs) ? outputs.filter((item): item is string => typeof item === 'string') : [artifact.childSummary];
 }
+
+function formatNumber(value: number): string {
+  return Number(value.toFixed(2)).toString();
+}
+
 function createP2Id(prefix: string): string {
   const suffix =
     typeof crypto !== 'undefined' && crypto.randomUUID

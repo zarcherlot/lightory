@@ -45,6 +45,34 @@ test('preserves a child-authored move-to-speech dependency in RobotPlan', () => 
   assert.deepEqual(result.preview[1]?.dependsOnNodeIds, ['move']);
 });
 
+test('lets a start-triggered speech artifact run before its upstream movement finishes', () => {
+  const result = compileDocument(
+    document(
+      [node('move', '移动模块'), node('speech', '语音模块')],
+      [edge('move', 'speech')],
+      [
+        artifactDelivery('move', MOVEMENT_ARTIFACT_SCHEMA_ID, {
+          actions: [{ type: 'driveDistance', distanceMeters: 1 }],
+          acceptanceCoverage: [],
+        }),
+        artifactDelivery('speech', SPEECH_ARTIFACT_SCHEMA_ID, {
+          text: '找到宝藏啦',
+          trigger: 'start',
+          acceptanceCoverage: [],
+        }, ['delivery-move']),
+      ],
+    ),
+  );
+
+  assert.equal(result.ok, true);
+  const speech = result.plan?.steps.find(({ tool }) => tool === 'speech.say');
+  assert.equal(speech?.dependsOn, undefined);
+  assert.deepEqual(
+    result.preview.find(({ nodeId }) => nodeId === 'speech')?.dependsOnNodeIds,
+    [],
+  );
+});
+
 test('keeps unconnected movement and speech modules parallel', () => {
   const result = compileDocument(
     document(
@@ -83,6 +111,10 @@ test('compiles a safe but incomplete movement-only blueprint', () => {
 
   assert.equal(result.ok, true);
   assert.equal(result.plan?.steps.filter(({ tool }) => tool === 'base.driveDistance').length, 2);
+  assert.equal(
+    result.plan?.steps.find(({ tool }) => tool === 'base.driveDistance')?.args.maxSpeedMps,
+    0.05,
+  );
   assert.equal(result.plan?.requiresUserConfirmation, true);
   assert.equal(result.plan?.risk, 'high');
 });

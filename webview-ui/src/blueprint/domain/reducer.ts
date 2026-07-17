@@ -478,6 +478,19 @@ export function applyBlueprintCommand(
         }),
       };
       break;
+    case 'debug.session-create':
+      assertUniqueId(document.debugSessions, command.session.id, 'debug session');
+      if (document.debugSessions.length > 0) {
+        throw new Error('A project can only have one debug session at this stage.');
+      }
+      if (!command.session.deliveryId.trim()) {
+        throw new Error('Debug session delivery id cannot be empty.');
+      }
+      if (command.session.evidence.length === 0) {
+        throw new Error('Debug session evidence is required.');
+      }
+      next = { ...document, debugSessions: [...document.debugSessions, command.session] };
+      break;
   }
 
   if (command.type !== 'workflow.prepare' && invalidatesWorkflow(command.type)) {

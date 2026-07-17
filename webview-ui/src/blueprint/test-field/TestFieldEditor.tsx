@@ -71,11 +71,26 @@ export function TestFieldEditor({
     run?: SimulationRun;
   }>();
   const [playbackIndex, setPlaybackIndex] = useState(-1);
+  const [autoRunTargetIndex, setAutoRunTargetIndex] = useState<number>();
   const stageRef = useRef<HTMLDivElement>(null);
   const selectedEntity = scene.entities.find(({ id }) => id === selectedId);
   const currentRevisionId = document.revisions.at(-1)?.id ?? '';
   const experimentStale = experiment !== undefined && experiment.revisionId !== currentRevisionId;
   const currentEvent = experiment?.run?.events[playbackIndex];
+
+  useEffect(() => {
+    if (!experiment?.run || autoRunTargetIndex === undefined) return;
+    if (playbackIndex >= autoRunTargetIndex) {
+      setAutoRunTargetIndex(undefined);
+      return;
+    }
+    const currentEvent = playbackIndex >= 0 ? experiment.run.events[playbackIndex] : undefined;
+    const currentDelay = currentEvent?.durationMs ? scaleSimulationDuration(currentEvent.durationMs) : 240;
+    const timeout = window.setTimeout(() => {
+      setPlaybackIndex((index) => Math.min(index + 1, autoRunTargetIndex));
+    }, currentDelay);
+    return () => window.clearTimeout(timeout);
+  }, [autoRunTargetIndex, experiment?.run, playbackIndex]);
 
   useEffect(() => {
     if (selectedId && !scene.entities.some(({ id }) => id === selectedId)) {
@@ -102,6 +117,7 @@ export function TestFieldEditor({
       ? simulateRobotPlan({ plan: compile.plan, scene, createId: createTestFieldId })
       : undefined;
     setExperiment({ revisionId: currentRevisionId, compile, ...(run ? { run } : {}) });
+    setAutoRunTargetIndex(undefined);
     setPlaybackIndex(-1);
     setInspectorMode('experiment');
     setSelectedId(undefined);
@@ -206,8 +222,17 @@ export function TestFieldEditor({
           <ExperimentPanel
             experiment={experiment}
             expectations={document.experimentExpectations}
-            onJumpTo={setPlaybackIndex}
+            autoRunning={autoRunTargetIndex !== undefined}
+            onJumpTo={(index) => {
+              setAutoRunTargetIndex(undefined);
+              setPlaybackIndex(index);
+            }}
             onPrepare={prepareExperiment}
+            onRunUntil={(index) => {
+              if (index < 0) return;
+              setAutoRunTargetIndex(index);
+              setPlaybackIndex((current) => Math.min(current + 1, index));
+            }}
             onSaveExpectations={(expectations) =>
               onCommand({ type: 'experiment.expectations-set', expectations })
             }
@@ -345,6 +370,9 @@ function SimulationOverlay({
   const pose = event?.pose ?? run.initialPose;
   const pathEndIndex = event?.pathEndIndex ?? 0;
   const visiblePath = run.path.slice(0, pathEndIndex + 1);
+  const transitionMs = event?.kind === 'move' && event.durationMs
+    ? scaleSimulationDuration(event.durationMs)
+    : 240;
   return (
     <div className="test-field-simulation-layer" aria-hidden="true">
       <svg preserveAspectRatio="none" viewBox={`0 0 ${scene.widthMeters} ${scene.heightMeters}`}>
@@ -359,6 +387,7 @@ function SimulationOverlay({
           '--robot-y': `${(pose.yMeters / scene.heightMeters) * 100}%`,
           '--robot-size': `${((run.robotRadiusMeters * 2) / scene.widthMeters) * 100}%`,
           '--robot-heading': `${pose.headingDegrees}deg`,
+          '--robot-transition-ms': `${transitionMs}ms`,
         } as React.CSSProperties}
       >
         <NavigationArrow size={25} weight="fill" />
@@ -368,24 +397,32 @@ function SimulationOverlay({
   );
 }
 
+function scaleSimulationDuration(durationMs: number): number {
+  return Math.min(7000, Math.max(700, Math.round(durationMs / 5)));
+}
+
 function ExperimentPanel({
   experiment,
+  autoRunning,
   expectations,
   scene,
   stale,
   playbackIndex,
   onPrepare,
   onJumpTo,
+  onRunUntil,
   onSaveExpectations,
   taskSuccessCriteria,
 }: {
   experiment?: { compile: BlueprintCompileResult; run?: SimulationRun };
+  autoRunning: boolean;
   expectations: ExperimentExpectation[];
   scene: SceneDefinition;
   stale: boolean;
   playbackIndex: number;
   onPrepare: () => void;
   onJumpTo: (index: number) => void;
+  onRunUntil: (index: number) => void;
   onSaveExpectations: (expectations: ExperimentExpectation[]) => void;
   taskSuccessCriteria: string[];
 }) {
@@ -449,15 +486,15 @@ function ExperimentPanel({
           </div>
           <div className="test-field-experiment-actions">
             <button
-              disabled={stale || run.events.length === 0 || atEnd || pausedAtDifference}
+              disabled={autoRunning || stale || run.events.length === 0 || atEnd || pausedAtDifference}
               onClick={() => onJumpTo(nextIndex)}
               type="button"
             >单步执行</button>
             <button
-              disabled={stale || run.events.length === 0 || atEnd || pausedAtDifference}
-              onClick={() => onJumpTo(runUntilIndex)}
+              disabled={autoRunning || stale || run.events.length === 0 || atEnd || pausedAtDifference}
+              onClick={() => onRunUntil(runUntilIndex)}
               type="button"
-            >运行到底</button>
+            >{autoRunning ? '运行中' : '运行到底'}</button>
             <button disabled={stale || playbackIndex < 0} onClick={() => onJumpTo(-1)} type="button">重置</button>
           </div>
           <div className="test-field-experiment-timeline">

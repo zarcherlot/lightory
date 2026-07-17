@@ -65,12 +65,20 @@ export const blueprintFixtureCatalog: BlueprintCatalog = {
   ],
   faults: [
     {
-      id: 'family-route-wrong-angle',
+      id: 'family-route-low-speed',
       agentId: 'route-engineer',
       type: 'wrong-parameter',
-      observableEvidence: ['预期转向 90 度', '里程计记录实际转向 60 度'],
-      repairCriteria: ['转向参数改为 90 度', '重新构建受影响路径并通过复验'],
-      debrief: '路线工程师把转向角度写错了；证据来自预期和里程计结果的首次差异。',
+      observableEvidence: ['路线方案使用 0.05 米/秒的低速', '试验场能观察到移动耗时明显过长'],
+      repairCriteria: ['请路线工程师把移动速度设置为 0.3m/s', '重新生成方案并在试验场复验耗时'],
+      debrief: '路线工程师在孩子没有说明速度时选择了过于保守的低速；修复需要总工程师补充明确速度要求。',
+    },
+    {
+      id: 'family-route-wrong-distance',
+      agentId: 'route-engineer',
+      type: 'wrong-parameter',
+      observableEvidence: ['小车停在目标前方', '实际前进距离少于孩子预期'],
+      repairCriteria: ['前进距离改为孩子确认的目标距离', '重新构建受影响路径并通过复验'],
+      debrief: '路线工程师少算了前进距离；证据来自目标位置和最终停靠点的差异。',
     },
     {
       id: 'museum-voice-wrong-order',

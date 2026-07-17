@@ -9,6 +9,7 @@ import type {
 } from './simulationTypes.js';
 
 const MOTION_INCREMENT_METERS = 0.05;
+const DEFAULT_LINEAR_SPEED_MPS = 0.2;
 
 export function simulateRobotPlan(input: SimulationInput): SimulationRun {
   const createId = input.createId ?? defaultCreateId;
@@ -173,6 +174,8 @@ function executeStep(context: ExecuteContext):
     if (distanceMeters === undefined || distanceMeters === 0) {
       return { issue: { code: 'drive_distance_invalid', message: '移动步骤缺少有效距离。' } };
     }
+    const speedMps = readPositiveSpeed(context.step.args.maxSpeedMps);
+    const durationMs = Math.round((Math.abs(distanceMeters) / speedMps) * 1000);
     const increments = Math.max(1, Math.ceil(Math.abs(distanceMeters) / MOTION_INCREMENT_METERS));
     const increment = distanceMeters / increments;
     let pose = context.pose;
@@ -211,9 +214,10 @@ function executeStep(context: ExecuteContext):
         kind: 'move',
         status: 'completed',
         title: `${distanceMeters > 0 ? '前进' : '后退'} ${formatNumber(Math.abs(distanceMeters))} 米`,
-        detail: `到达 ${formatPoint(pose)}。`,
+        detail: `以 ${formatNumber(speedMps)} 米/秒移动，约 ${formatDuration(durationMs)}，到达 ${formatPoint(pose)}。`,
         pose,
         pathEndIndex: context.path.length - 1,
+        durationMs,
       },
     };
   }
@@ -334,6 +338,11 @@ function finiteNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
+function readPositiveSpeed(value: unknown): number {
+  const speed = finiteNumber(value);
+  return speed !== undefined && speed > 0 ? speed : DEFAULT_LINEAR_SPEED_MPS;
+}
+
 function normalizeDegrees(value: number): number {
   return Number((((value % 360) + 360) % 360).toFixed(6));
 }
@@ -342,6 +351,10 @@ function degreesToRadians(value: number): number { return (value * Math.PI) / 18
 function radiansToDegrees(value: number): number { return (value * 180) / Math.PI; }
 function clamp(value: number, minimum: number, maximum: number): number { return Math.min(Math.max(value, minimum), maximum); }
 function formatNumber(value: number): string { return Number(value.toFixed(2)).toString(); }
+function formatDuration(durationMs: number): string {
+  if (durationMs < 1000) return `${durationMs} 毫秒`;
+  return `${formatNumber(durationMs / 1000)} 秒`;
+}
 function formatPoint(pose: SimulationPose): string { return `(${formatNumber(pose.xMeters)}, ${formatNumber(pose.yMeters)}) 米`; }
 
 function defaultCreateId(prefix: string): string {

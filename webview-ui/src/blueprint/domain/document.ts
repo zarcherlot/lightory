@@ -568,9 +568,21 @@ function isDebugSession(value: unknown): boolean {
     isRecord(value.expected) &&
     (value.actual === undefined || isRecord(value.actual)) &&
     isStringArray(value.evidence) &&
+    (value.diagnosis === undefined || isAgentFaultType(value.diagnosis)) &&
     (value.correction === undefined || typeof value.correction === 'string') &&
     (value.retestPassed === undefined || typeof value.retestPassed === 'boolean')
   );
+}
+
+function isAgentFaultType(value: unknown): boolean {
+  return [
+    'requirement-misread',
+    'condition-omitted',
+    'wrong-parameter',
+    'interface-mismatch',
+    'wrong-order',
+    'unsupported-action',
+  ].includes(String(value));
 }
 
 function isInkPoint(value: unknown): boolean {

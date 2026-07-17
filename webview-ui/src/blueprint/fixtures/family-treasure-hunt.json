@@ -9,7 +9,7 @@
   "availableAgentIds": ["route-engineer", "voice-engineer"],
   "stageGates": ["goal", "architecture", "assignment", "build", "test"],
   "testScenarioIds": ["family-treasure-hunt-basic"],
-  "faultScenarioIds": ["family-route-wrong-angle"],
+  "faultScenarioIds": ["family-route-low-speed", "family-route-wrong-distance"],
   "successCriteria": [
     "孩子定义了找到宝藏的可观察标准",
     "移动结果通过交付连接在正确时机触发语音",

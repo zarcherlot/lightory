@@ -24,6 +24,7 @@ export interface SimulationEvent {
   detail: string;
   pose: SimulationPose;
   pathEndIndex: number;
+  durationMs?: number;
   speechText?: string;
   collisionEntityId?: string;
 }

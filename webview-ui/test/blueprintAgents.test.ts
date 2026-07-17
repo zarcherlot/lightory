@@ -160,6 +160,51 @@ test('runs the assignment confirmation, return, resubmit and acceptance state ma
   assert.equal(state.present.assignmentReviews.length, 2);
 });
 
+test('records one small-agent review challenge per project', () => {
+  let state = createBlueprintHistoryState(createEmptyBlueprintDocument());
+  state = run(state, { type: 'node.create', node });
+  const assignment = createDraftAssignment(
+    'assignment-1',
+    { agent, node, availableTools: [tool] },
+    1,
+  );
+  state = run(state, { type: 'assignment.create', assignment });
+  const delivery = createMockDelivery('delivery-1', agent, assignment, []);
+
+  state = run(state, {
+    type: 'debug.session-create',
+    session: {
+      id: 'debug-1',
+      deliveryId: delivery.id,
+      expected: {
+        faultScenarioId: 'family-route-low-speed',
+        repairCriteria: ['请路线工程师把移动速度设置为 0.3m/s'],
+      },
+      actual: { agentId: agent.id, speedMps: 0.05 },
+      evidence: ['路线方案把 1.5 米移动速度设为 0.05 米/秒。', '试验场预计这一步大约需要 30 秒。'],
+      diagnosis: 'wrong-parameter',
+      correction: '请路线工程师把移动速度设置为 0.3m/s',
+      retestPassed: false,
+    },
+  });
+
+  assert.equal(state.present.debugSessions.length, 1);
+  assert.equal(state.present.debugSessions[0]?.diagnosis, 'wrong-parameter');
+  assert.throws(
+    () =>
+      run(state, {
+        type: 'debug.session-create',
+        session: {
+          id: 'debug-2',
+          deliveryId: delivery.id,
+          expected: { faultScenarioId: 'family-route-wrong-distance' },
+          evidence: ['小车停在目标前方'],
+        },
+      }),
+    /one debug session/,
+  );
+});
+
 test('rejects incomplete contracts and illegal assignment transitions', () => {
   let state = createBlueprintHistoryState(createEmptyBlueprintDocument());
   state = run(state, { type: 'node.create', node });

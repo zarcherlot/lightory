@@ -4,6 +4,8 @@ import {
 } from '../domain/artifactSchemas.js';
 import type { AgentArtifact, AgentTaskContract } from '../domain/types.js';
 
+const REVIEW_CHALLENGE_LOW_SPEED_MPS = 0.05;
+
 export interface AgentRuntimeRequest {
   agentRole: string;
   assignmentId: string;
@@ -53,7 +55,7 @@ function createPayload(
   if (schemaId === SPEECH_ARTIFACT_SCHEMA_ID) {
     return {
       text: parseSpeechText(contractText),
-      trigger: request.visibleArtifacts.length > 0 ? 'after-input' : 'start',
+      trigger: requestsSpeechAfterInput(contractText) ? 'after-input' : 'start',
       acceptanceCoverage: request.contract.acceptanceCriteria,
     };
   }
@@ -67,6 +69,7 @@ function createPayload(
 
 function parseMovementActions(text: string): Array<Record<string, unknown>> {
   const actions: Array<Record<string, unknown>> = [];
+  const requestedSpeed = parseRequestedLinearSpeed(text);
   const expression =
     /(前进|向前|后退|向后|左转|向左转|右转|向右转|旋转)\s*([+-]?\d+(?:\.\d+)?)\s*(米|m|度|°|弧度|rad)/giu;
   for (const match of text.matchAll(expression)) {
@@ -76,7 +79,11 @@ function parseMovementActions(text: string): Array<Record<string, unknown>> {
     if (!Number.isFinite(value)) continue;
     if (unit === '米' || unit === 'm') {
       const sign = direction === '后退' || direction === '向后' ? -1 : 1;
-      actions.push({ type: 'driveDistance', distanceMeters: sign * Math.abs(value) });
+      actions.push({
+        type: 'driveDistance',
+        distanceMeters: sign * Math.abs(value),
+        maxSpeedMps: requestedSpeed ?? REVIEW_CHALLENGE_LOW_SPEED_MPS,
+      });
       continue;
     }
     const radians = unit === '度' || unit === '°' ? (value * Math.PI) / 180 : value;
@@ -86,11 +93,21 @@ function parseMovementActions(text: string): Array<Record<string, unknown>> {
   return actions;
 }
 
+function parseRequestedLinearSpeed(text: string): number | undefined {
+  const match = text.match(/(?:速度|speed)\s*[:：]?\s*([+-]?\d+(?:\.\d+)?)\s*(?:米\/秒|m\/s|mps)/iu);
+  const speed = match?.[1] === undefined ? undefined : Number(match[1]);
+  return speed !== undefined && Number.isFinite(speed) && speed > 0 ? speed : undefined;
+}
+
 function parseSpeechText(text: string): string {
   const quoted = text.match(/[“"「『]([^”"」』]+)[”"」』]/u)?.[1]?.trim();
   if (quoted) return quoted;
   const instruction = text.match(/(?:说|播报|朗读|语音提示)\s*[:：]?\s*([^\n，。；;]+)/u)?.[1]?.trim();
   return instruction ?? '';
+}
+
+function requestsSpeechAfterInput(text: string): boolean {
+  return /(到达|抵达|完成|移动后|走到|到.*后|收到.*后|上游.*后|之后|再播报|再说|再触发|然后.*说|然后.*播报|然后.*触发)/u.test(text);
 }
 
 function assertAllowedTools(request: AgentRuntimeRequest): void {

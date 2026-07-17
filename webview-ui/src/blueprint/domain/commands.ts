@@ -8,6 +8,7 @@ import type {
   BlueprintEdge,
   BlueprintNode,
   BlueprintRevision,
+  DebugSession,
   ExperimentExpectation,
   InkStroke,
   SceneEntity,
@@ -110,7 +111,8 @@ export type BlueprintCommand =
       type: 'assignment.resubmit';
       assignmentId: string;
       restatement: AgentRestatement;
-    });
+    })
+  | (CommandMetadata & { type: 'debug.session-create'; session: DebugSession });
 
 export type BlueprintCommandInput = {
   [Type in BlueprintCommand['type']]: Omit<Extract<BlueprintCommand, { type: Type }>, 'revision'>;

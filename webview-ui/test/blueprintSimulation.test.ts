@@ -26,6 +26,17 @@ test('executes movement, stop and speech from the robot start pose', () => {
   assert.equal(result.events[2]?.speechText, '找到宝藏啦');
 });
 
+test('shows movement speed as observable experiment timing evidence', () => {
+  const result = simulate(withEntities([robotStart()]), [
+    step('move', 'base.driveDistance', { distanceMeters: 1.5, maxSpeedMps: 0.05 }),
+  ]);
+
+  assert.equal(result.status, 'completed');
+  assert.equal(result.events[0]?.durationMs, 30_000);
+  assert.match(result.events[0]?.detail ?? '', /0.05 米\/秒/);
+  assert.match(result.events[0]?.detail ?? '', /约 30 秒/);
+});
+
 test('uses child-visible heading semantics where positive robot angle turns left', () => {
   const result = simulate(withEntities([robotStart()]), [
     step('turn', 'base.rotateAngle', { angleRad: Math.PI / 2 }),

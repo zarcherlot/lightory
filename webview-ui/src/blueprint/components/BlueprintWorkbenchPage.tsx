@@ -17,13 +17,14 @@ import { compileAcceptedBlueprint } from '../compiler/index.js';
 import type { BlueprintCommand, BlueprintCommandInput } from '../domain/commands.js';
 import { createEmptyBlueprintDocument } from '../domain/document.js';
 import { blueprintHistoryReducer, createBlueprintHistoryState } from '../domain/reducer.js';
-import type { AgentWorkflow, BlueprintRevision, TaskDefinition } from '../domain/types.js';
+import type { AgentDelivery, AgentWorkflow, BlueprintRevision, TaskDefinition } from '../domain/types.js';
 import {
   blueprintFixtureCatalog,
   familyTreasureHuntDefinition,
   museumGuideDefinition,
 } from '../fixtures/index.js';
 import { LocalStorageBlueprintRepository } from '../persistence/blueprintRepository.js';
+import { selectReviewChallenge } from '../simulation/index.js';
 import { loadTaskDefinition } from '../tasks/taskDefinitionLoader.js';
 import { TestFieldEditor } from '../test-field/index.js';
 import {
@@ -39,6 +40,8 @@ const tasks = [
   loadTaskDefinition(familyTreasureHuntDefinition, blueprintFixtureCatalog),
   loadTaskDefinition(museumGuideDefinition, blueprintFixtureCatalog),
 ];
+const DEFAULT_UNSPECIFIED_SPEED_MPS = 0.05;
+const LOW_SPEED_REVIEW_THRESHOLD_MPS = 0.1;
 
 export function BlueprintWorkbenchPage() {
   const [taskId, setTaskId] = useState(tasks[0]!.id);
@@ -111,6 +114,47 @@ function BlueprintProject({
     () => blueprintFixtureCatalog.agents.filter(({ id }) => task.availableAgentIds.includes(id)),
     [task.availableAgentIds],
   );
+  const createReviewChallengeSession = useCallback((deliveries: AgentDelivery[]) => {
+    const challenge = selectReviewChallenge({
+      task,
+      catalog: blueprintFixtureCatalog,
+      assignments: history.present.assignments,
+      existingDebugSessionCount: history.present.debugSessions.length,
+    });
+    const challengedDelivery = challenge
+      ? deliveries.find((delivery) =>
+        history.present.assignments.some(
+          (assignment) =>
+            assignment.id === delivery.assignmentId &&
+            assignment.agentId === challenge.fault.agentId,
+        ),
+      )
+      : undefined;
+    if (!challenge || !challengedDelivery) return false;
+    const observation = readReviewChallengeObservation(challenge.fault.id, challengedDelivery);
+    if (!observation) return false;
+    onCommand({
+      type: 'debug.session-create',
+      session: {
+        id: createP3Id('debug'),
+        deliveryId: challengedDelivery.id,
+        expected: {
+          faultScenarioId: challenge.fault.id,
+          repairCriteria: challenge.fault.repairCriteria,
+        },
+        actual: {
+          agentId: challenge.fault.agentId,
+          simulatorOnly: challenge.simulatorOnly,
+          ...observation.actual,
+        },
+        evidence: observation.evidence,
+        diagnosis: challenge.fault.type,
+        correction: challenge.fault.repairCriteria.join('；'),
+        retestPassed: false,
+      },
+    });
+    return true;
+  }, [history.present.assignments, history.present.debugSessions.length, onCommand, task]);
   const runNextBuildBatch = useCallback(async (workflowOverride?: AgentWorkflow) => {
     setBuildState('running');
     setBuildMessage('正在按孩子确认的连接准备工程师输入…');
@@ -131,6 +175,7 @@ function BlueprintProject({
           delivery,
         });
       }
+      createReviewChallengeSession(result.deliveries);
       setBuildState('done');
       setBuildMessage(result.message);
       if (result.deliveries.length > 0) setWorkflowOpen(false);
@@ -138,7 +183,11 @@ function BlueprintProject({
       setBuildState('error');
       setBuildMessage(error instanceof Error ? error.message : '工程师工作失败，请检查蓝图。');
     }
-  }, [agentRuntime, availableAgents, history.present, onCommand, task.id]);
+  }, [agentRuntime, availableAgents, createReviewChallengeSession, history.present, onCommand, task.id]);
+  useEffect(() => {
+    if (!hydrated || history.present.debugSessions.length > 0 || history.present.deliveries.length === 0) return;
+    createReviewChallengeSession(history.present.deliveries);
+  }, [createReviewChallengeSession, history.present.debugSessions.length, history.present.deliveries, hydrated]);
   useEffect(() => {
     if (!hydrated || buildState === 'running' || workflowAnalysis.issues.length > 0) return;
     const assignmentById = new Map(history.present.assignments.map((item) => [item.id, item]));
@@ -300,6 +349,79 @@ function BlueprintProject({
       )}
     </main>
   );
+}
+
+function readReviewChallengeObservation(faultId: string, delivery: AgentDelivery): {
+  actual: Record<string, unknown>;
+  evidence: string[];
+} | undefined {
+  if (faultId === 'family-route-low-speed') return readLowSpeedObservation(delivery);
+  if (faultId === 'museum-voice-wrong-order') return readEarlySpeechObservation(delivery);
+  return undefined;
+}
+
+function readLowSpeedObservation(delivery: AgentDelivery): {
+  actual: Record<string, unknown>;
+  evidence: string[];
+} | undefined {
+  if (!delivery.artifact.schemaId.endsWith('/movement-v1')) return undefined;
+  const actions = delivery.artifact.payload.actions;
+  if (!Array.isArray(actions)) return undefined;
+  for (const action of actions) {
+    if (!isRecord(action) || action.type !== 'driveDistance') continue;
+    const distanceMeters = readFiniteNumber(action.distanceMeters);
+    const speedMps = readFiniteNumber(action.maxSpeedMps) ?? DEFAULT_UNSPECIFIED_SPEED_MPS;
+    if (
+      distanceMeters === undefined ||
+      speedMps === undefined ||
+      speedMps <= 0 ||
+      speedMps >= LOW_SPEED_REVIEW_THRESHOLD_MPS
+    ) continue;
+    const durationSeconds = Math.round((Math.abs(distanceMeters) / speedMps) * 10) / 10;
+    return {
+      actual: { distanceMeters, durationSeconds, speedMps },
+      evidence: [
+        `路线方案把 ${formatNumber(Math.abs(distanceMeters))} 米移动速度设为 ${formatNumber(speedMps)} 米/秒。`,
+        `试验场预计这一步大约需要 ${formatNumber(durationSeconds)} 秒，明显偏慢。`,
+      ],
+    };
+  }
+  return undefined;
+}
+
+function readEarlySpeechObservation(delivery: AgentDelivery): {
+  actual: Record<string, unknown>;
+  evidence: string[];
+} | undefined {
+  if (!delivery.artifact.schemaId.endsWith('/speech-v1')) return undefined;
+  if (delivery.artifact.payload.trigger !== 'start') return undefined;
+  if (delivery.artifact.inputArtifactIds.length === 0) return undefined;
+  const text = typeof delivery.artifact.payload.text === 'string'
+    ? delivery.artifact.payload.text.trim()
+    : '';
+  return {
+    actual: {
+      inputArtifactIds: delivery.artifact.inputArtifactIds,
+      speechText: text,
+      trigger: 'start',
+    },
+    evidence: [
+      `语音方案设置为任务开始时播报${text ? `“${text}”` : ''}。`,
+      '这个语音模块有上游移动交付，但没有等待上游完成。',
+    ],
+  };
+}
+
+function readFiniteNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function formatNumber(value: number): string {
+  return Number(value.toFixed(2)).toString();
 }
 
 function TaskPicker({
