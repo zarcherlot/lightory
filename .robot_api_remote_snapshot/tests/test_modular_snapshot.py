@@ -52,6 +52,20 @@ def test_validator_preserves_confirmation_and_stop_warning():
     assert [warning["code"] for warning in result["warnings"]] == ["no_stop_fallback"]
 
 
+def test_validator_allows_race_stop_without_user_confirmation():
+    from robot_api.validator import validate_plan
+
+    result = validate_plan({
+        "schemaVersion": "robot-plan/v1",
+        "planId": "race_stop",
+        "constraints": {"allowedTools": ["race.stop"], "maxSteps": 1},
+        "steps": [{"id": "stop", "tool": "race.stop", "args": {}, "safety": {"requiresLease": "base"}}],
+    })
+
+    assert result["ok"] is True
+    assert result["errors"] == []
+
+
 def test_envelope_preserves_schema_and_robot_metadata():
     from robot_api.envelope import make_envelope
     from robot_api.schemas import ROBOT_ID, SOFTWARE_VERSION

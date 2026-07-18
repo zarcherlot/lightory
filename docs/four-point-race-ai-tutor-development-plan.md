@@ -563,6 +563,29 @@ Steps:
 - [ ] Verify lidar stop behavior with a controlled obstacle.
 - [ ] Run tutor review after lap result.
 
+Airborne progress note, 2026-07-18:
+
+- Robot was physically lifted, so wheel motion was safe but odom/AMCL could not validate real displacement.
+- Verified `robot_api` health and tool registry on `http://192.168.1.6:8088`.
+- Verified registered tools include base movement, localization, POI/track, lidar safety, and race tools.
+- Executed `base.velocityProfile` at `0.08m/s` for `1000ms`; wheels turned, plan completed, and `base.stop` completed.
+- Verified localization/lidar/race status read path:
+  - `localization.health` reported scan, map, TF, odom pose, and map pose available.
+  - `lidar.snapshot` returned fresh sector distances; front minimum was about `0.636m` during the check.
+  - `race.status` reported controller inactive before race test.
+- Created temporary track `p8-air-abcd`, previewed A-B-C-D-A successfully, and received child-readable route summary.
+- Executed short airborne `race.runLap` with `maxSpeedMps: 0.08` and `maxDurationMs: 3000`; wheels ran and stopped with `stopReason: "timeout"` after about `3050ms`, as expected because pose did not move while lifted.
+- Verified `race.stop` executed after the run and controller became inactive.
+- Found and fixed a robot-side validator mismatch: `race.stop` is a safety stop tool and must validate without user confirmation, matching the Pad race plan builder.
+- Added local snapshot coverage for `race.stop` validation; `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest .robot_api_remote_snapshot/tests/test_modular_snapshot.py -q` passed with `17 passed`.
+- Deployed the validator fix to the real robot container and verified `race.stop` validation returns `ok: true` without `requiresUserConfirmation`.
+- Executed standalone `race.stop`; plan completed and reported controller `active: false`, `state: "idle"`.
+- Verified `lidar.checkSafety` through real plan execution:
+  - `frontStopDistanceMeters: 0.35` returned `ok: true`.
+  - `frontStopDistanceMeters: 1.0` returned `ok: false`, sector `front`, stop reason `front_obstacle_too_close`.
+- Cleared temporary track `p8-air-abcd` after the test.
+- Remaining P8 validation requires ground contact: real map, AMCL initial pose, remote-control A/B/C/D recording, real preview, real timed lap, controlled lidar stop, and tutor review.
+
 Exit criteria:
 
 - The real robot completes one safe timed lap or safely stops with a child-readable reason.

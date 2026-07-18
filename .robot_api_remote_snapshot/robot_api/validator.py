@@ -47,7 +47,7 @@ def validate_plan(plan: Any) -> Dict[str, Any]:
             continue
         if tool_name not in allowed_tools:
             errors.append({'code': 'tool_not_allowed', 'message': f'Tool {tool_name} is not in allowedTools.', 'stepId': step_id})
-        if tool['risk'] in ('high', 'critical') and tool_name != 'base.stop' and not plan.get('requiresUserConfirmation'):
+        if tool['risk'] in ('high', 'critical') and not is_stop_tool(tool_name) and not plan.get('requiresUserConfirmation'):
             errors.append({'code': 'confirmation_required', 'message': f'Tool {tool_name} requires confirmation.', 'stepId': step_id})
         errors.extend(validate_step_args(step))
     for step in steps:
@@ -57,6 +57,10 @@ def validate_plan(plan: Any) -> Dict[str, Any]:
     if not any(step.get('tool') == 'base.stop' for step in steps if isinstance(step, dict)):
         warnings.append({'code': 'no_stop_fallback', 'message': 'Plan has no explicit base.stop fallback.'})
     return validation_result(plan_id, errors, warnings, plan if not errors else None)
+
+
+def is_stop_tool(tool_name: Any) -> bool:
+    return tool_name in ('base.stop', 'race.stop')
 
 
 def validate_step_args(step: Dict[str, Any]) -> List[Dict[str, Any]]:
