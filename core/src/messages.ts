@@ -35,6 +35,7 @@ export type ServerMessage =
   | RoleTaskConsole
   | RoleTaskStatus
   | RobotIntentPlanResult
+  | RaceTutorOutput
   | AgentDiagnostics;
 
 export type ClientMessage =
@@ -42,6 +43,7 @@ export type ClientMessage =
   | StartRoleTask
   | ConsoleUserInput
   | PlanRobotIntent
+  | RaceTutorInput
   | FocusAgent
   | CloseAgent
   | SaveAgentSeats
@@ -295,6 +297,31 @@ export interface RobotIntentPlanResult {
   error?: string;
 }
 
+export interface RaceTutorOutput {
+  type: 'raceTutorOutput';
+  requestId: string;
+  sessionId: string;
+  ok: boolean;
+  publicReply?: string;
+  expertReplies?: AnonymousSchema_183[];
+  suggestedRobotAction?: AnonymousSchema_186;
+  raceDraftPatch?: Record<string, any>;
+  error?: string;
+  expertNotes?: AnonymousSchema_190[];
+}
+
+export interface AnonymousSchema_183 {
+  expertId: string;
+  publicReply: string;
+}
+
+export type AnonymousSchema_186 = 'none' | 'record_point' | 'preview_lap' | 'run_lap';
+
+export interface AnonymousSchema_190 {
+  expertId: string;
+  note: string;
+}
+
 export interface AgentDiagnostics {
   type: 'agentDiagnostics';
   agents: Record<string, any>[];
@@ -334,6 +361,14 @@ export interface PlanRobotIntent {
   requestId: string;
   content: string;
   tools: Record<string, any>[];
+}
+
+export interface RaceTutorInput {
+  type: 'raceTutorInput';
+  requestId: string;
+  sessionId: string;
+  content: string;
+  knownFacts?: Record<string, any>;
 }
 
 export interface FocusAgent {

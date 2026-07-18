@@ -12,7 +12,20 @@ export interface RobotConnectionConfig {
 export interface RobotToolDefinition {
   name: string;
   version: string;
-  category: 'base' | 'arm' | 'vision' | 'audio' | 'speech' | 'led' | 'memory' | 'watchdog';
+  category:
+    | 'base'
+    | 'arm'
+    | 'vision'
+    | 'audio'
+    | 'speech'
+    | 'led'
+    | 'memory'
+    | 'watchdog'
+    | 'localization'
+    | 'poi'
+    | 'lidar'
+    | 'race'
+    | 'safety';
   description: string;
   inputSchema: Record<string, unknown>;
   outputSchema: Record<string, unknown>;

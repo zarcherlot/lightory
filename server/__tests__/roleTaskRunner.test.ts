@@ -113,7 +113,11 @@ describe('roleTaskRunner', () => {
       },
     ]);
 
-    expect(prompt).toContain('Execute this weather role task');
+    expect(prompt).toContain('You are running the weather role in a desktop robot console.');
+    expect(prompt).toContain('Stay in character and speak directly to the user in natural Chinese.');
+    expect(prompt).toContain(
+      'Do not claim the robot has executed a physical action unless an execution result is present in the inputs.',
+    );
     expect(prompt).toContain('plan-card from captain');
     expect(prompt).toContain('bring a water bottle');
     expect(prompt).toContain('查询杭州明天的天气。');

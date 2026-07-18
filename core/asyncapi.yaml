@@ -113,6 +113,7 @@ components:
         - $ref: '#/components/schemas/RoleTaskConsole'
         - $ref: '#/components/schemas/RoleTaskStatus'
         - $ref: '#/components/schemas/RobotIntentPlanResult'
+        - $ref: '#/components/schemas/RaceTutorOutput'
         # Diagnostics
         - $ref: '#/components/schemas/AgentDiagnostics'
       discriminator: type
@@ -123,6 +124,7 @@ components:
         - $ref: '#/components/schemas/StartRoleTask'
         - $ref: '#/components/schemas/ConsoleUserInput'
         - $ref: '#/components/schemas/PlanRobotIntent'
+        - $ref: '#/components/schemas/RaceTutorInput'
         - $ref: '#/components/schemas/FocusAgent'
         - $ref: '#/components/schemas/CloseAgent'
         - $ref: '#/components/schemas/SaveAgentSeats'
@@ -690,6 +692,53 @@ components:
         error:
           type: string
 
+    RaceTutorOutput:
+      description: Child-facing result from the four-point race AI tutor session.
+      type: object
+      additionalProperties: false
+      required: [type, requestId, sessionId, ok]
+      properties:
+        type:
+          const: raceTutorOutput
+        requestId:
+          type: string
+        sessionId:
+          type: string
+        ok:
+          type: boolean
+        publicReply:
+          type: string
+        expertReplies:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [expertId, publicReply]
+            properties:
+              expertId:
+                type: string
+              publicReply:
+                type: string
+        suggestedRobotAction:
+          enum: [none, record_point, preview_lap, run_lap]
+        raceDraftPatch:
+          type: object
+          additionalProperties: true
+        error:
+          type: string
+        expertNotes:
+          type: array
+          description: Internal notes may be present in tests, but default Console presenters must not render them.
+          items:
+            type: object
+            additionalProperties: false
+            required: [expertId, note]
+            properties:
+              expertId:
+                type: string
+              note:
+                type: string
+
     # ── Client message variants ────────────────────────────────────
 
     WebviewReady:
@@ -775,6 +824,24 @@ components:
           items:
             type: object
             additionalProperties: true
+
+    RaceTutorInput:
+      description: Send one child message to the four-point race AI tutor session.
+      type: object
+      additionalProperties: false
+      required: [type, requestId, sessionId, content]
+      properties:
+        type:
+          const: raceTutorInput
+        requestId:
+          type: string
+        sessionId:
+          type: string
+        content:
+          type: string
+        knownFacts:
+          type: object
+          additionalProperties: true
 
     FocusAgent:
       description: Focus an agent's terminal.

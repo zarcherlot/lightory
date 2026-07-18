@@ -111,7 +111,11 @@ export function validateRobotPlanLocally(
     errors.push({ code: 'cycle', message: 'Plan dependencies contain a cycle.' });
   }
 
-  if (!plan.steps.some((step) => step.tool === 'base.stop' || step.tool === 'watchdog.release')) {
+  if (
+    !plan.steps.some(
+      (step) => step.tool === 'base.stop' || step.tool === 'race.stop' || step.tool === 'watchdog.release',
+    )
+  ) {
     warnings.push({
       code: 'no_stop_fallback',
       message: 'Plan has no explicit stop or release fallback.',
@@ -343,7 +347,7 @@ function validNodeId(value: unknown): value is string {
 }
 
 function isAlwaysAllowedStopTool(toolName: string): boolean {
-  return toolName === 'base.stop' || toolName === 'arm.stop';
+  return toolName === 'base.stop' || toolName === 'arm.stop' || toolName === 'race.stop';
 }
 
 function hasCycle(plan: RobotPlan): boolean {

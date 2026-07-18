@@ -24,6 +24,7 @@ import { OfficeState } from './office/engine/officeState.js';
 import { isRotatable } from './office/layout/furnitureCatalog.js';
 import { getPetCount } from './office/sprites/petSpriteData.js';
 import { EditTool } from './office/types.js';
+import { createRaceTutorRuntime, type RaceTutorRuntime } from './robot/education/tutorRuntime.js';
 import {
   normalizeRobotIntent,
   type RobotIntent,
@@ -298,6 +299,30 @@ function App() {
 
   const [editorTickForKeyboard, setEditorTickForKeyboard] = useState(0);
   const visualizeRobotIntentRef = useRef<(intent: RobotIntent) => void>(() => {});
+  const raceTutorEntryIdRef = useRef(200000);
+  const [raceTutorEntries, setRaceTutorEntries] = useState<RoleTaskConsoleEntry[]>([]);
+  const raceTutorRuntimeRef = useRef<RaceTutorRuntime | null>(null);
+  useEffect(() => {
+    const runtime = createRaceTutorRuntime({
+      transport,
+      appendEntry: (entry) => {
+        setRaceTutorEntries((prev) =>
+          [
+            ...prev,
+            {
+              ...entry,
+              id: ++raceTutorEntryIdRef.current,
+            },
+          ].slice(-500),
+        );
+      },
+    });
+    raceTutorRuntimeRef.current = runtime;
+    return () => {
+      raceTutorRuntimeRef.current = null;
+      runtime.dispose();
+    };
+  }, []);
   const planRobotIntentWithModel = useCallback(
     (content: string, tools: RobotToolDefinition[]): Promise<RobotIntentPlannerOutcome> =>
       new Promise((resolve) => {
@@ -862,7 +887,7 @@ function App() {
       </Modal>
 
       <RoleTaskConsole
-        entries={[...roleTaskConsoleEntries, ...robotRuntime.entries]}
+        entries={[...roleTaskConsoleEntries, ...robotRuntime.entries, ...raceTutorEntries]}
         roleOptions={sceneRoleOptions}
         isSettingsOpen={isSettingsOpen}
         robotConnected={robotRuntime.connected}
@@ -873,6 +898,7 @@ function App() {
         onSubmitInput={(content) => {
           const roleMention = parseRoleMentionInput(content);
           if (roleMention) return startConsoleRoleChat(roleMention);
+          if (raceTutorRuntimeRef.current?.handleConsoleInput(content)) return true;
           return robotRuntime.handleConsoleInput(content);
         }}
         onRobotEmergencyStop={robotRuntime.emergencyStop}

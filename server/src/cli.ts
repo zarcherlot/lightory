@@ -30,6 +30,9 @@ import {
   opencodeProvider,
 } from './providers/index.js';
 import { createRobotIntentPlanner } from './robotIntentPlanner.js';
+import { createExpertMailbox } from './robotTutor/expertMailbox.js';
+import { createLlmRoleRunner } from './robotTutor/llmRoleRunner.js';
+import { createRaceTutorOrchestrator } from './robotTutor/tutorOrchestrator.js';
 import { createRoleTaskRunner } from './roleTaskRunner.js';
 import { LightoryServer } from './server.js';
 
@@ -142,6 +145,15 @@ async function main(): Promise<void> {
       }
     };
 
+    const llmRoleRunner = createLlmRoleRunner({
+      provider,
+      cwd: process.cwd(),
+    });
+    const raceTutor = createRaceTutorOrchestrator({
+      runner: llmRoleRunner,
+      mailbox: createExpertMailbox({ runner: llmRoleRunner }),
+    });
+
     const config = await server.start({
       store,
       runtime,
@@ -160,6 +172,8 @@ async function main(): Promise<void> {
         provider,
         cwd: process.cwd(),
       }),
+      onRaceTutorTurn: ({ sessionId, content, knownFacts }) =>
+        raceTutor.handleTurn({ sessionId, childMessage: content, knownFacts }),
     });
     currentConfig = { port: config.port, token: config.token };
 

@@ -26,6 +26,8 @@ allure-report/
 # Build artifacts
 *.vsix
 *.map
+__pycache__/
+*.pyc
 android-pad/.gradle/
 android-pad/app/build/
 android-pad/build/

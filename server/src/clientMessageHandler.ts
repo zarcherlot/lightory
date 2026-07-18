@@ -4,6 +4,7 @@ import type { LoadedAssets, LoadedCharacterSprites, LoadedPetSprites } from './a
 import { readConfig, writeConfig } from './configPersistence.js';
 import { readLayoutFromFile, writeLayoutToFile } from './layoutPersistence.js';
 import { claudeProvider } from './providers/index.js';
+import type { RaceTutorTurnResult } from './robotTutor/schemas.js';
 
 type WsSend = (message: Record<string, unknown>) => void;
 export interface RoleTaskInputCard {
@@ -29,6 +30,12 @@ export type PlanRobotIntentSideEffect = (request: {
   content: string;
   tools: Array<Record<string, unknown>>;
 }) => Promise<{ ok: true; intent: Record<string, unknown> } | { ok: false; error: string }>;
+export type RaceTutorTurnSideEffect = (request: {
+  requestId: string;
+  sessionId: string;
+  content: string;
+  knownFacts?: Record<string, unknown>;
+}) => Promise<RaceTutorTurnResult>;
 
 /** Cached assets loaded at server startup. Sent to each WebSocket client on webviewReady. */
 export interface AssetCache {
@@ -50,6 +57,8 @@ export interface ClientMessageContext {
   onStartRoleTask?: StartRoleTaskSideEffect;
   /** Convert free-form robot commands into a restricted RobotIntent object. */
   onPlanRobotIntent?: PlanRobotIntentSideEffect;
+  /** Advance the four-point race AI tutor conversation. */
+  onRaceTutorTurn?: RaceTutorTurnSideEffect;
 }
 
 // Setting key constants
@@ -188,6 +197,54 @@ export function handleClientMessage(
             type: 'robotIntentPlanResult',
             requestId,
             ok: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      })();
+      break;
+    }
+
+    case 'raceTutorInput': {
+      const requestId = typeof msg.requestId === 'string' ? msg.requestId : '';
+      const sessionId =
+        typeof msg.sessionId === 'string' && msg.sessionId.trim()
+          ? msg.sessionId.trim()
+          : 'default-race-session';
+      const content = typeof msg.content === 'string' ? msg.content.trim() : '';
+      const knownFacts =
+        msg.knownFacts && typeof msg.knownFacts === 'object' && !Array.isArray(msg.knownFacts)
+          ? (msg.knownFacts as Record<string, unknown>)
+          : undefined;
+      if (!requestId || !content) break;
+      void (async () => {
+        try {
+          const result = await ctx.onRaceTutorTurn?.({ requestId, sessionId, content, knownFacts });
+          if (!result) {
+            send({
+              type: 'raceTutorOutput',
+              requestId,
+              ok: false,
+              sessionId,
+              error: 'Race tutor is unavailable.',
+            });
+            return;
+          }
+          send({
+            type: 'raceTutorOutput',
+            requestId,
+            ok: true,
+            sessionId,
+            publicReply: result.publicReply,
+            expertReplies: result.expertReplies,
+            suggestedRobotAction: result.suggestedRobotAction,
+            raceDraftPatch: result.raceDraftPatch,
+          });
+        } catch (error) {
+          send({
+            type: 'raceTutorOutput',
+            requestId,
+            ok: false,
+            sessionId,
             error: error instanceof Error ? error.message : String(error),
           });
         }

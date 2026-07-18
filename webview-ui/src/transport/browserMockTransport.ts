@@ -53,6 +53,31 @@ export class BrowserMockTransport implements MessageTransport {
       return;
     }
 
+    if (message.type === 'raceTutorInput') {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: {
+            type: 'raceTutorOutput',
+            requestId: message.requestId,
+            sessionId: message.sessionId,
+            ok: true,
+            publicReply:
+              '我们先从定位开始：当你用遥控器把小车开到 A 点时，你觉得小车要记录地图里的什么信息，才能下次再找到 A 点？',
+            expertReplies: [
+              {
+                expertId: 'localization',
+                publicReply:
+                  '我是定位工程师。小车记录的不是一句“这里是 A”，而是 map 坐标系里的位置和朝向。',
+              },
+            ],
+            suggestedRobotAction: 'none',
+            raceDraftPatch: { nextPoint: 'A' },
+          },
+        }),
+      );
+      return;
+    }
+
     console.debug('[BrowserMockTransport] client message ignored', message);
   }
 
