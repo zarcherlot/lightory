@@ -29,6 +29,23 @@ def test_registry_exposes_existing_tools_in_order():
     assert DEFAULT_REGISTRY.get("base.driveDistance")["timeoutMs"] == 15000
 
 
+def test_race_bringup_launch_starts_only_race_required_nodes():
+    launch_file = SNAPSHOT_ROOT / "launch" / "race_bringup.launch.py"
+
+    source = launch_file.read_text()
+
+    assert "controller.launch.py" in source
+    assert "lidar.launch.py" in source
+    assert "init_pose.launch.py" in source
+    assert "race_localization.launch.py" in source
+    assert "robot_api.launch.py" in source
+    assert "joystick_control.launch.py" not in source
+    assert "teleop_key_control.launch.py" not in source
+    assert "depth_camera.launch.py" not in source
+    assert "navigation_base.launch.py" not in source
+    assert "bringup.launch.py" not in source
+
+
 def test_validator_preserves_confirmation_and_stop_warning():
     from robot_api.validator import validate_plan
 

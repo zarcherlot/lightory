@@ -554,13 +554,13 @@ Exit criteria:
 
 Steps:
 
-- [ ] Start real robot API and lightweight localization.
-- [ ] Set initial AMCL pose through the localization tool.
-- [ ] Remote-control the robot to A/B/C/D and record points.
-- [ ] Preview the lap.
-- [ ] Confirm and run baseline lap.
-- [ ] Verify race can be stopped from Pad.
-- [ ] Verify lidar stop behavior with a controlled obstacle.
+- [x] Start real robot API and lightweight localization.
+- [x] Set initial AMCL pose through the localization tool.
+- [x] Remote-control the robot to A/B/C/D and record points.
+- [x] Preview the lap.
+- [x] Confirm and run conservative baseline lap.
+- [x] Verify race can be stopped from Pad.
+- [x] Verify lidar stop behavior with a controlled obstacle.
 - [ ] Run tutor review after lap result.
 
 Airborne progress note, 2026-07-18:
@@ -585,6 +585,34 @@ Airborne progress note, 2026-07-18:
   - `frontStopDistanceMeters: 1.0` returned `ok: false`, sector `front`, stop reason `front_obstacle_too_close`.
 - Cleared temporary track `p8-air-abcd` after the test.
 - Remaining P8 validation requires ground contact: real map, AMCL initial pose, remote-control A/B/C/D recording, real preview, real timed lap, controlled lidar stop, and tutor review.
+
+Ground progress note, 2026-07-18:
+
+- Drew and loaded the real `map_01` map.
+- Set AMCL initial pose from RViz, then verified `localization.health` reported fresh scan, odom pose, map pose, TF, `/map`, `/scan`, and `/scan_raw`.
+- Recorded A/B/C/D through `localization.recordCurrentPose` into `default-abcd`:
+  - A `(0.048, 0.004)`
+  - B `(1.377, -0.046)`
+  - C `(1.270, -0.251)`
+  - D `(0.533, -0.574)`
+- Saved `default-abcd` and previewed `A-B-C-D-A`; route length was about `3.1195m`.
+- Ran a low-speed `race.runLap` at `0.08m/s` with an `8000ms` cap; it timed out and stopped as expected.
+- Ran a conservative ground lap attempt at `0.12m/s`; the controller ran for about `25.454s` and stopped safely with `stopReason: "front_obstacle_too_close"` when the front distance reached about `0.344m` against a `0.35m` threshold.
+- Verified `race.stop` completed after the run and `/controller/cmd_vel` had no residual velocity output.
+
+Bringup progress note, 2026-07-19:
+
+- Added `robot_api/launch/race_bringup.launch.py` as the MVP one-command startup path.
+- The bringup starts controller, lidar, AMCL/map localization, init pose, and `robot_api`.
+- The bringup deliberately does not start Nav2 planner/controller, joystick/teleop control, or depth camera.
+- Verified on the real robot from a clean ROS graph:
+  - `ros2 launch robot_api race_bringup.launch.py map:=/home/ubuntu/ros2_ws/src/slam/maps/map_01.yaml`
+  - `GET /api/health` returned ok.
+  - Node graph included `robot_api`, `map_server`, `amcl`, `LD19`, `scan_to_scan_filter_chain`, `odom_publisher`, `ekf_filter_node`, and controller nodes.
+  - Node graph did not include `aurora`, `joystick_control`, `teleop_control`, `planner_server`, `controller_server`, or `bt_navigator`.
+  - `/controller/cmd_vel` had only `robot_api` as publisher, and a 2-second idle sample produced no velocity messages.
+  - API-level `localization.health`, `lidar.checkSafety`, and `race.status` all passed.
+- Local snapshot verification: `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest .robot_api_remote_snapshot/tests/test_modular_snapshot.py -q` passed with `18 passed`.
 
 Exit criteria:
 
