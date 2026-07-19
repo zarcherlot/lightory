@@ -5,6 +5,7 @@ import { handleClientMessage } from '../src/clientMessageHandler.js';
 import { createExpertMailbox } from '../src/robotTutor/expertMailbox.js';
 import type { LlmRoleRunner } from '../src/robotTutor/llmRoleRunner.js';
 import { parseExpertOutput, parseTutorOutput } from '../src/robotTutor/schemas.js';
+import { buildExpertPrompt, buildTutorPrompt } from '../src/robotTutor/skillPrompts.js';
 import { createDeterministicRaceTutorOrchestrator } from '../src/robotTutor/tutorOrchestrator.js';
 
 describe('robotTutor schemas', () => {
@@ -65,6 +66,42 @@ describe('expert mailbox', () => {
   });
 });
 
+describe('race tutor prompts', () => {
+  it('instructs the tutor to diagnose first and keep teaching Socratic instead of lecture-heavy', () => {
+    const prompt = buildTutorPrompt({
+      session: {
+        sessionId: 's1',
+        recordedPoints: [],
+        state: 'goal',
+        childFacingHistory: [],
+        expertNotes: [],
+        raceDraft: {},
+      },
+      childMessage: '我今天想完成四点竞速赛',
+      knownFacts: { childCanUseRemoteControl: true },
+    });
+
+    expect(prompt).toContain('先诊断孩子已经懂什么');
+    expect(prompt).toContain('每轮最多提出 1-2 个');
+    expect(prompt).toContain('不要连续讲授超过两句');
+    expect(prompt).toContain('如果孩子已经会用遥控');
+  });
+
+  it('gives experts personality, tool boundary, variables, and guided-question rules', () => {
+    const prompt = buildExpertPrompt({
+      expertId: 'motion',
+      question: '孩子想让小车跑得更像赛车，请引导他思考。',
+      context: { stage: 'improve_lap' },
+    });
+
+    expect(prompt).toContain('人格');
+    expect(prompt).toContain('你掌管的工具或变量');
+    expect(prompt).toContain('不能替 AI 导师决定');
+    expect(prompt).toContain('至少提出一个引导性问题');
+    expect(prompt).toContain('lookahead');
+  });
+});
+
 describe('race tutor orchestrator', () => {
   it('asks a Socratic first question and mentions the localization expert for a race goal', async () => {
     const tutor = createDeterministicRaceTutorOrchestrator();
@@ -79,6 +116,30 @@ describe('race tutor orchestrator', () => {
     expect(turn.publicReply).toContain('A 点');
     expect(turn.mentions.map((mention) => mention.expertId)).toContain('localization');
     expect(turn.suggestedRobotAction).toBe('none');
+  });
+
+  it('turns a lidar stop result into review questions and safety/strategy expert support', async () => {
+    const tutor = createDeterministicRaceTutorOrchestrator();
+
+    const turn = await tutor.handleTurn({
+      sessionId: 'race-session-review',
+      childMessage: '刚才小车因为前方太近停下了，我们怎么改进成绩？',
+      knownFacts: {
+        lastRaceResult: {
+          status: 'stopped',
+          elapsedMs: 25454,
+          stopReason: 'front_obstacle_too_close',
+          nearestObstacleMeters: 0.344,
+          thresholdMeters: 0.35,
+        },
+      },
+    });
+
+    expect(turn.publicReply).toContain('0.344');
+    expect(turn.publicReply).toContain('0.35');
+    expect(turn.publicReply).toContain('只改一个变量');
+    expect(turn.publicReply).toContain('你觉得');
+    expect(turn.mentions.map((mention) => mention.expertId)).toEqual(['safety', 'strategy']);
   });
 });
 

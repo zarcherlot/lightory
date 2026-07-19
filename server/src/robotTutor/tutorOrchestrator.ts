@@ -108,6 +108,36 @@ function applyTutorPatch(session: RaceTutorSession, turn: TutorTurnOutput): void
 
 function deterministicTutorTurn(request: RaceTutorTurnRequest): TutorTurnOutput {
   const content = request.childMessage.replace(/\s+/g, '');
+  const lastRaceResult = isRecord(request.knownFacts?.lastRaceResult)
+    ? request.knownFacts.lastRaceResult
+    : undefined;
+  if (lastRaceResult && /停|成绩|改进|复盘|为什么|怎么/u.test(content)) {
+    const nearest = typeof lastRaceResult.nearestObstacleMeters === 'number'
+      ? lastRaceResult.nearestObstacleMeters.toFixed(3)
+      : '未知';
+    const threshold = typeof lastRaceResult.thresholdMeters === 'number'
+      ? lastRaceResult.thresholdMeters.toFixed(2)
+      : '0.35';
+    return {
+      publicReply:
+        `这次小车不是乱停，它看到前方大约 ${nearest} 米，已经接近安全线 ${threshold} 米。` +
+        '我们先像工程师一样只改一个变量：你觉得下一次应该先改变安全距离、路线位置，还是过弯速度？为什么？',
+      mentions: [
+        {
+          expertId: 'safety',
+          question: '孩子看到 race.runLap 因 front_obstacle_too_close 停止，请用安全工程师视角引导他理解雷达阈值和安全停车。',
+          context: { stage: 'review_lidar_stop', lastRaceResult },
+        },
+        {
+          expertId: 'strategy',
+          question: '孩子想改进成绩，请引导他选择一个变量做下一圈对比实验。',
+          context: { stage: 'choose_one_variable', lastRaceResult },
+        },
+      ],
+      raceDraftPatch: { reviewFocus: 'choose_one_variable', lastRaceResult },
+      suggestedRobotAction: 'none',
+    };
+  }
   if (/4点|四点|竞速|比赛/u.test(content)) {
     return {
       publicReply:
@@ -129,4 +159,8 @@ function deterministicTutorTurn(request: RaceTutorTurnRequest): TutorTurnOutput 
     mentions: [],
     suggestedRobotAction: 'none',
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }

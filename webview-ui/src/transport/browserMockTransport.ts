@@ -62,12 +62,12 @@ export class BrowserMockTransport implements MessageTransport {
             sessionId: message.sessionId,
             ok: true,
             publicReply:
-              '我们先从定位开始：当你用遥控器把小车开到 A 点时，你觉得小车要记录地图里的什么信息，才能下次再找到 A 点？',
+              '好，我们先把它当成一次赛车工程实验。你已经会用遥控把车开到 A 点了，那你觉得“开到 A 点”和“让小车记住 A 点”差在哪里？',
             expertReplies: [
               {
                 expertId: 'localization',
                 publicReply:
-                  '我是定位工程师。小车记录的不是一句“这里是 A”，而是 map 坐标系里的位置和朝向。',
+                  '定位工程师：我掌管 AMCL 和地图坐标。你猜记录 A 点时，最关键的是名字“A”，还是地图里的 x、y 位置和车头方向？',
               },
             ],
             suggestedRobotAction: 'none',
