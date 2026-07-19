@@ -562,6 +562,9 @@ Steps:
 - [x] Verify race can be stopped from Pad.
 - [x] Verify lidar stop behavior with a controlled obstacle.
 - [ ] Run tutor review after lap result.
+- [ ] Debug the AI tutor and expert-agent heuristic guidance loop as today's first priority.
+- [ ] Tune four-point race path control after the tutor loop is validated.
+- [ ] Explore lidar obstacle detour behavior after the stop-on-obstacle baseline remains stable.
 
 Airborne progress note, 2026-07-18:
 
@@ -614,10 +617,28 @@ Bringup progress note, 2026-07-19:
   - API-level `localization.health`, `lidar.checkSafety`, and `race.status` all passed.
 - Local snapshot verification: `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest .robot_api_remote_snapshot/tests/test_modular_snapshot.py -q` passed with `18 passed`.
 
+Remaining P8 focus, 2026-07-19:
+
+- Priority 1: heuristic guidance testing for the AI tutor and expert agents.
+  - Start from the child-facing prompt: "我今天想完成四点竞速赛".
+  - Verify the tutor first asks Socratic questions to infer the child's prior knowledge instead of directly explaining everything.
+  - Verify the tutor can call or mention the right expert agent at the right moment: localization, motion/control, safety/lidar, and race strategy.
+  - Verify expert replies stay in character and expose their tool boundary, key variables, and STEM idea through guided questions.
+  - Verify the Console shows only child-facing tutor/expert content, not raw prompts, raw JSON, tool debug output, or implementation logs.
+- Priority 2: path control tuning.
+  - Use yesterday's `default-abcd` track and lap result as the baseline.
+  - Investigate why the run stopped before completing a full lap, separating true obstacle stops from path/control issues.
+  - Tune lookahead, waypoint radius, finish radius, turn speed reduction, and short B-C segment handling so the robot behaves more like a race car and less like point-to-point stop navigation.
+- Priority 3: lidar detour exploration.
+  - Keep the current stop-on-obstacle path as the safety baseline.
+  - Define the first safe detour MVP: when an obstacle is detected, generate a small local offset or recovery maneuver only under bounded conditions.
+  - Define clear fallback behavior: if the obstacle cannot be confidently bypassed, stop and produce a child-readable safety explanation.
+
 Exit criteria:
 
 - The real robot completes one safe timed lap or safely stops with a child-readable reason.
 - Tutor asks the child to choose one improvement variable for the next attempt.
+- Tutor and expert agents demonstrate a Socratic, child-facing STEM review of the lap result before the next engineering iteration.
 
 ## 8. Test Plan
 
