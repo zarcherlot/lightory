@@ -113,6 +113,7 @@ components:
         - $ref: '#/components/schemas/RoleTaskConsole'
         - $ref: '#/components/schemas/RoleTaskStatus'
         - $ref: '#/components/schemas/RobotIntentPlanResult'
+        - $ref: '#/components/schemas/RaceConversationRouteResult'
         - $ref: '#/components/schemas/RaceTutorOutput'
         # Diagnostics
         - $ref: '#/components/schemas/AgentDiagnostics'
@@ -124,6 +125,7 @@ components:
         - $ref: '#/components/schemas/StartRoleTask'
         - $ref: '#/components/schemas/ConsoleUserInput'
         - $ref: '#/components/schemas/PlanRobotIntent'
+        - $ref: '#/components/schemas/RaceConversationRouteInput'
         - $ref: '#/components/schemas/RaceTutorInput'
         - $ref: '#/components/schemas/FocusAgent'
         - $ref: '#/components/schemas/CloseAgent'
@@ -692,6 +694,29 @@ components:
         error:
           type: string
 
+    RaceConversationRouteResult:
+      description: LLM semantic route decision for console input in the four-point race MVP.
+      type: object
+      additionalProperties: false
+      required: [type, requestId, ok]
+      properties:
+        type:
+          const: raceConversationRouteResult
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        speakerRole:
+          enum: [child, developer, operator, unknown]
+        route:
+          enum: [ai_tutor, robot_execution, robot_tool_planning, general_robot_intent]
+        confidence:
+          type: number
+        reason:
+          type: string
+        error:
+          type: string
+
     RaceTutorOutput:
       description: Child-facing result from the four-point race AI tutor session.
       type: object
@@ -720,7 +745,7 @@ components:
               publicReply:
                 type: string
         suggestedRobotAction:
-          enum: [none, record_point, preview_lap, run_lap]
+          enum: [none, record_point, run_lap]
         raceDraftPatch:
           type: object
           additionalProperties: true
@@ -824,6 +849,24 @@ components:
           items:
             type: object
             additionalProperties: true
+
+    RaceConversationRouteInput:
+      description: Ask the server-side model provider to route console input by speaker role, context, and teaching stage.
+      type: object
+      additionalProperties: false
+      required: [type, requestId, content]
+      properties:
+        type:
+          const: raceConversationRouteInput
+        requestId:
+          type: string
+        content:
+          type: string
+        raceSessionActive:
+          type: boolean
+        knownFacts:
+          type: object
+          additionalProperties: true
 
     RaceTutorInput:
       description: Send one child message to the four-point race AI tutor session.

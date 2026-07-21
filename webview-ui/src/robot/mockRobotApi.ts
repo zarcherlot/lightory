@@ -43,7 +43,6 @@ const mockTools: RobotToolDefinition[] = [
   tool('lidar.snapshot', 'lidar', 'low', false, 3000, '读取雷达扇区最小距离'),
   tool('lidar.checkSafety', 'safety', 'low', false, 3000, '检查前方安全距离'),
   tool('race.status', 'race', 'low', false, 3000, '读取当前竞速赛状态'),
-  tool('race.previewLap', 'race', 'low', false, 5000, '预览四点竞速赛路线'),
   tool('race.runLap', 'race', 'high', true, 120000, '执行 A-B-C-D-A 连续竞速圈', 'base'),
   tool('race.stop', 'race', 'critical', false, 2000, '停止当前竞速赛', 'base'),
   tool('watchdog.acquire', 'watchdog', 'medium', false, 1000, '获取动作 lease'),
@@ -183,7 +182,8 @@ export class MockRobotApiClient implements RobotApiClient {
       }
       step.status = 'done';
       step.endedAt = new Date().toISOString();
-      const result = envelope(true, `${step.tool} done`);
+      const planStep = plan.steps.find((item) => item.id === step.id);
+      const result = envelope(true, `${step.tool} done`, planStep ? mockStepData(planStep) : {});
       step.result = result;
       this.events.emit({ type: 'plan.step.done', planId: plan.planId, stepId: step.id, result });
     }
@@ -265,6 +265,41 @@ function inputSchemaForTool(name: RobotToolDefinition['name']): Record<string, u
       additionalProperties: false,
     };
   }
+  if (name === 'race.runLap') {
+    return {
+      type: 'object',
+      required: ['trackId', 'order'],
+      properties: {
+        trackId: { type: 'string', default: 'default-abcd' },
+        mapId: { type: 'string', default: 'map_01' },
+        order: {
+          type: 'array',
+          items: { enum: ['A', 'B', 'C', 'D'] },
+          default: ['A', 'B', 'C', 'D', 'A'],
+        },
+        strategy: {
+          type: 'object',
+          properties: {
+            maxSpeedMps: { type: 'number', default: 0.25, minimum: 0.05, maximum: 0.5 },
+            minTurnSpeedMps: { type: 'number', default: 0.08, minimum: 0.03, maximum: 0.5 },
+            lookaheadMeters: { type: 'number', default: 0.35, minimum: 0.05, maximum: 1 },
+            waypointRadiusMeters: { type: 'number', default: 0.18, minimum: 0.05, maximum: 1 },
+            finishRadiusMeters: { type: 'number', default: 0.22, minimum: 0.05, maximum: 1 },
+          },
+          additionalProperties: true,
+        },
+        safety: {
+          type: 'object',
+          properties: {
+            frontStopDistanceMeters: { type: 'number', default: 0.15, minimum: 0.05 },
+            maxDurationMs: { type: 'number', default: 120000, minimum: 1000 },
+          },
+          additionalProperties: true,
+        },
+      },
+      additionalProperties: false,
+    };
+  }
   if (name === 'reactive.run') {
     return {
       type: 'object',
@@ -332,7 +367,31 @@ function createPlanState(plan: RobotPlan): RobotPlanState {
   };
 }
 
-function envelope(ok: boolean, message: string): RobotApiEnvelope {
+function mockStepData(step: RobotPlan['steps'][number]): unknown {
+  if (step.tool === 'race.track.list') {
+    return {
+      tracks: [
+        {
+          trackId: 'default-abcd',
+          name: 'ABCD timed race',
+          order: ['A', 'B', 'C', 'D'],
+          points: {
+            A: { name: 'A' },
+            B: { name: 'B' },
+            C: { name: 'C' },
+            D: { name: 'D' },
+          },
+        },
+      ],
+    };
+  }
+  if (step.tool === 'race.runLap') {
+    return { status: 'done', elapsedMs: 12345 };
+  }
+  return {};
+}
+
+function envelope(ok: boolean, message: string, data: unknown = {}): RobotApiEnvelope {
   const now = new Date().toISOString();
   return {
     schemaVersion: 'robot-api/v1',
@@ -340,7 +399,7 @@ function envelope(ok: boolean, message: string): RobotApiEnvelope {
     requestId: `mock_req_${Date.now().toString(36)}`,
     status: ok ? 'done' : 'hardware_error',
     message,
-    data: {},
+    data,
     timing: { startedAt: now, endedAt: now, durationMs: 0 },
     robot: { robotId: 'mock-robot-001', hostname: 'mock-robot', softwareVersion: 'mock-0.1.0' },
   };

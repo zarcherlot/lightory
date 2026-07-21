@@ -1,4 +1,4 @@
-import type { LlmRoleRunner } from './llmRoleRunner.js';
+import type { LlmRoleRunner } from '../../llmRoleExecutor.js';
 import type { ExpertOutput, RaceTutorMention } from './schemas.js';
 import { parseExpertOutputJson } from './schemas.js';
 import { buildExpertPrompt, roleIdForExpert } from './skillPrompts.js';

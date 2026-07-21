@@ -49,6 +49,10 @@ class RaceController:
         segment_index = 0
         visited: List[str] = []
         safety_events: List[Dict[str, Any]] = []
+        waypoint_arrival_radius = max(
+            float(merged_strategy['waypointRadiusMeters']),
+            float(merged_strategy['lookaheadMeters']),
+        )
         self.status = {'active': True, 'state': 'running', 'trackId': track_id, 'currentTarget': route[1]['name']}
         try:
             while timer.elapsed_ms() < int(merged_safety['maxDurationMs']):
@@ -60,8 +64,16 @@ class RaceController:
                     safety_events.append(safety_check)
                     return self._finish(track_id, 'stopped', timer.elapsed_ms(), visited, safety_check['stopReason'], safety_events)
                 pose = self.ros.lookup_map_pose()
+                segment_index = advance_visited_waypoints(
+                    pose,
+                    route,
+                    segment_index,
+                    visited,
+                    waypoint_arrival_radius,
+                )
+                if has_completed_lap(pose, route, segment_index, float(merged_strategy['finishRadiusMeters'])):
+                    return self._finish(track_id, 'done', timer.elapsed_ms(), visited, 'finished', safety_events)
                 target = lookahead_target(pose, route, segment_index, float(merged_strategy['lookaheadMeters']))
-                segment_index = max(segment_index, int(target['segmentIndex']))
                 command = compute_velocity_command(pose, target['point'], merged_strategy)
                 self.ros.publish_velocity(command['linearX'], command['angularZ'])
                 next_point = route[min(segment_index + 1, len(route) - 1)]
@@ -73,13 +85,6 @@ class RaceController:
                     'elapsedMs': timer.elapsed_ms(),
                     'command': command,
                 }
-                if distance(pose, next_point) <= float(merged_strategy['waypointRadiusMeters']):
-                    if next_point['name'] not in visited:
-                        visited.append(next_point['name'])
-                    if segment_index < len(route) - 2:
-                        segment_index += 1
-                if has_completed_lap(pose, route, visited, float(merged_strategy['finishRadiusMeters'])):
-                    return self._finish(track_id, 'done', timer.elapsed_ms(), visited, 'finished', safety_events)
                 await asyncio.sleep(0.1)
             return self._finish(track_id, 'stopped', timer.elapsed_ms(), visited, 'timeout', safety_events)
         finally:
@@ -123,11 +128,27 @@ def compute_velocity_command(
     return {'linearX': round(linear, 4), 'angularZ': round(angular, 4), 'headingErrorRad': error}
 
 
+def advance_visited_waypoints(
+    pose: Dict[str, float],
+    route: List[Dict[str, Any]],
+    segment_index: int,
+    visited: List[str],
+    waypoint_radius_meters: float,
+) -> int:
+    while segment_index < len(route) - 2:
+        next_point = route[segment_index + 1]
+        if distance(pose, next_point) > waypoint_radius_meters:
+            break
+        if next_point['name'] not in visited:
+            visited.append(next_point['name'])
+        segment_index += 1
+    return segment_index
+
+
 def has_completed_lap(
     pose: Dict[str, float],
     route: List[Dict[str, Any]],
-    visited: List[str],
+    segment_index: int,
     finish_radius_meters: float,
 ) -> bool:
-    required = [point['name'] for point in route[1:-1]]
-    return all(name in visited for name in required) and distance(pose, route[-1]) <= finish_radius_meters
+    return segment_index >= len(route) - 2 and distance(pose, route[-1]) <= finish_radius_meters

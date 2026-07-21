@@ -1,13 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import type { RaceConversationRouteResult, RaceTutorOutput } from '../../core/src/messages.js';
 import { toMajorMinor } from './changelogData.js';
 import { ChangelogModal } from './components/ChangelogModal.js';
+import {
+  createConsoleEntrySequencer,
+  publishConsoleTranscript,
+} from './components/consoleTranscript.js';
 import { DebugView } from './components/DebugView.js';
 import { EditActionBar } from './components/EditActionBar.js';
 import type { EducationConnection, EducationRunStatus } from './components/EducationModeOverlay.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
 import { RoleConfigModal } from './components/RoleConfigModal.js';
 import { RoleTaskConsole } from './components/RoleTaskConsole.js';
+import type { RoleTaskConsoleEntry } from './components/roleTaskConsoleTypes.js';
 import { SettingsModal } from './components/SettingsModal.js';
 import { Tooltip } from './components/Tooltip.js';
 import { Modal } from './components/ui/Modal.js';
@@ -24,7 +30,12 @@ import { OfficeState } from './office/engine/officeState.js';
 import { isRotatable } from './office/layout/furnitureCatalog.js';
 import { getPetCount } from './office/sprites/petSpriteData.js';
 import { EditTool } from './office/types.js';
-import { createRaceTutorRuntime, type RaceTutorRuntime } from './robot/education/tutorRuntime.js';
+import {
+  createRaceLapIntentFromTutorOutput,
+  createRaceRecordPointIntentFromTutorOutput,
+  createRaceTutorRuntime,
+  type RaceTutorRuntime,
+} from './robot/education/tutorRuntime.js';
 import {
   normalizeRobotIntent,
   type RobotIntent,
@@ -302,27 +313,8 @@ function App() {
   const raceTutorEntryIdRef = useRef(200000);
   const [raceTutorEntries, setRaceTutorEntries] = useState<RoleTaskConsoleEntry[]>([]);
   const raceTutorRuntimeRef = useRef<RaceTutorRuntime | null>(null);
-  useEffect(() => {
-    const runtime = createRaceTutorRuntime({
-      transport,
-      appendEntry: (entry) => {
-        setRaceTutorEntries((prev) =>
-          [
-            ...prev,
-            {
-              ...entry,
-              id: ++raceTutorEntryIdRef.current,
-            },
-          ].slice(-500),
-        );
-      },
-    });
-    raceTutorRuntimeRef.current = runtime;
-    return () => {
-      raceTutorRuntimeRef.current = null;
-      runtime.dispose();
-    };
-  }, []);
+  const robotRaceKnownFactsRef = useRef<Record<string, unknown>>({ recentRobotEvents: [] });
+  const sequenceConsoleEntriesRef = useRef(createConsoleEntrySequencer());
   const planRobotIntentWithModel = useCallback(
     (content: string, tools: RobotToolDefinition[]): Promise<RobotIntentPlannerOutcome> =>
       new Promise((resolve) => {
@@ -358,6 +350,56 @@ function App() {
       }),
     [],
   );
+  const routeRaceConversationWithModel = useCallback(
+    (content: string): Promise<RaceConversationRouteResult> =>
+      new Promise((resolve) => {
+        const requestId = `race_route_${Date.now().toString(36)}_${Math.random()
+          .toString(36)
+          .slice(2)}`;
+        let settled = false;
+        let timeout = 0;
+        let unsubscribe = () => {};
+        const cleanup = () => {
+          settled = true;
+          window.clearTimeout(timeout);
+          unsubscribe();
+        };
+        const fallback = (error: string): RaceConversationRouteResult => ({
+          type: 'raceConversationRouteResult',
+          requestId,
+          ok: false,
+          speakerRole: 'unknown',
+          route: 'ai_tutor',
+          confidence: 0,
+          reason: `fallback: ${error}`,
+          error,
+        });
+        timeout = window.setTimeout(() => {
+          if (settled) return;
+          cleanup();
+          resolve(fallback('Race conversation router timed out.'));
+        }, 60_000);
+        unsubscribe = transport.onMessage((message) => {
+          if (message.type !== 'raceConversationRouteResult' || message.requestId !== requestId) {
+            return;
+          }
+          cleanup();
+          if (!message.ok) {
+            resolve(fallback(message.error ?? 'Race conversation router failed.'));
+            return;
+          }
+          resolve(message);
+        });
+        transport.send({
+          type: 'raceConversationRouteInput',
+          requestId,
+          content,
+          raceSessionActive: raceTutorRuntimeRef.current?.getSession()?.active === true,
+          knownFacts: { childCanUseRemoteControl: true, race: robotRaceKnownFactsRef.current },
+        });
+      }),
+    [],
+  );
   const robotRuntime = useRobotRuntime({
     getOfficeState,
     planRobotIntent: planRobotIntentWithModel,
@@ -365,6 +407,61 @@ function App() {
       visualizeRobotIntentRef.current(intent);
     }, []),
   });
+  useEffect(() => {
+    robotRaceKnownFactsRef.current = robotRuntime.raceKnownFacts as unknown as Record<string, unknown>;
+  }, [robotRuntime.raceKnownFacts]);
+  const { executeIntent } = robotRuntime;
+  const consoleEntries = useMemo(
+    () =>
+      sequenceConsoleEntriesRef.current([
+        ...roleTaskConsoleEntries,
+        ...robotRuntime.entries,
+        ...raceTutorEntries,
+      ]),
+    [raceTutorEntries, robotRuntime.entries, roleTaskConsoleEntries],
+  );
+  useEffect(() => {
+    publishConsoleTranscript(consoleEntries);
+  }, [consoleEntries]);
+  const handleRaceTutorRobotAction = useCallback(
+    (action: string, message: RaceTutorOutput) => {
+      if (action === 'record_point') {
+        const intent = createRaceRecordPointIntentFromTutorOutput(message);
+        if (intent) executeIntent(intent);
+        return;
+      }
+      if (action === 'run_lap') {
+        executeIntent(
+          createRaceLapIntentFromTutorOutput(message, { race: robotRaceKnownFactsRef.current }),
+          'AI老师准备让小车按 A-B-C-D-A 跑一圈。请确认小车在 A 点附近、赛道周围安全后再开始。',
+        );
+      }
+    },
+    [executeIntent],
+  );
+  useEffect(() => {
+    const runtime = createRaceTutorRuntime({
+      transport,
+      getKnownFacts: () => ({ race: robotRaceKnownFactsRef.current }),
+      onSuggestedRobotAction: handleRaceTutorRobotAction,
+      appendEntry: (entry) => {
+        setRaceTutorEntries((prev) =>
+          [
+            ...prev,
+            {
+              ...entry,
+              id: ++raceTutorEntryIdRef.current,
+            },
+          ].slice(-500),
+        );
+      },
+    });
+    raceTutorRuntimeRef.current = runtime;
+    return () => {
+      raceTutorRuntimeRef.current = null;
+      runtime.dispose();
+    };
+  }, [handleRaceTutorRobotAction]);
   useEditorKeyboard(
     editor.isEditMode,
     editorState,
@@ -887,7 +984,7 @@ function App() {
       </Modal>
 
       <RoleTaskConsole
-        entries={[...roleTaskConsoleEntries, ...robotRuntime.entries, ...raceTutorEntries]}
+        entries={consoleEntries}
         roleOptions={sceneRoleOptions}
         isSettingsOpen={isSettingsOpen}
         robotConnected={robotRuntime.connected}
@@ -898,8 +995,14 @@ function App() {
         onSubmitInput={(content) => {
           const roleMention = parseRoleMentionInput(content);
           if (roleMention) return startConsoleRoleChat(roleMention);
-          if (raceTutorRuntimeRef.current?.handleConsoleInput(content)) return true;
-          return robotRuntime.handleConsoleInput(content);
+          void routeRaceConversationWithModel(content).then((decision) => {
+            if (decision.route === 'ai_tutor' || !decision.route) {
+              raceTutorRuntimeRef.current?.handleTutorInput(content);
+              return;
+            }
+            robotRuntime.handleConsoleInput(content);
+          });
+          return true;
         }}
         onRobotEmergencyStop={robotRuntime.emergencyStop}
         onConfirmRobotPlan={robotRuntime.confirmPendingPlan}

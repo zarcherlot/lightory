@@ -53,6 +53,23 @@ export class BrowserMockTransport implements MessageTransport {
       return;
     }
 
+    if (message.type === 'raceConversationRouteInput') {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: {
+            type: 'raceConversationRouteResult',
+            requestId: message.requestId,
+            ok: true,
+            speakerRole: 'child',
+            route: 'ai_tutor',
+            confidence: 0.8,
+            reason: 'Dev mock routes race conversation starts to the AI tutor.',
+          },
+        }),
+      );
+      return;
+    }
+
     if (message.type === 'raceTutorInput') {
       window.dispatchEvent(
         new MessageEvent('message', {
@@ -62,14 +79,8 @@ export class BrowserMockTransport implements MessageTransport {
             sessionId: message.sessionId,
             ok: true,
             publicReply:
-              '好，我们先把它当成一次赛车工程实验。你已经会用遥控把车开到 A 点了，那你觉得“开到 A 点”和“让小车记住 A 点”差在哪里？',
-            expertReplies: [
-              {
-                expertId: 'localization',
-                publicReply:
-                  '定位工程师：我掌管 AMCL 和地图坐标。你猜记录 A 点时，最关键的是名字“A”，还是地图里的 x、y 位置和车头方向？',
-              },
-            ],
+              '好，我们先把它当成一次赛车工程实验。第一步先定 A 点：你想把小车停在赛道的哪个位置当起点？',
+            expertReplies: [],
             suggestedRobotAction: 'none',
             raceDraftPatch: { nextPoint: 'A' },
           },

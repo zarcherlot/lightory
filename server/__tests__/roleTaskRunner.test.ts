@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import type { HookProvider } from '../../core/src/provider.js';
+import {
+  buildCodexRoleTaskConfigArgs,
+  buildCodexRoleTaskIsolationArgs,
+  buildLlmRoleCommand,
+  buildRoleTaskEnv,
+} from '../src/llmRoleExecutor.js';
 import { __test } from '../src/roleTaskRunner.js';
 
 const codexProvider = {
@@ -22,7 +28,7 @@ describe('roleTaskRunner', () => {
   });
 
   it('runs Codex role tasks with user config by default and stdin prompt', () => {
-    const command = __test.buildRoleTaskCommand(codexProvider, 'hello role', 'D:\\repo', 'run-1');
+    const command = buildLlmRoleCommand(codexProvider, 'hello role', 'D:\\repo', 'run-1');
 
     expect(command?.command).toBe('codex');
     expect(command?.args).toEqual(
@@ -34,6 +40,8 @@ describe('roleTaskRunner', () => {
         'D:\\repo',
         '--output-last-message',
         '-',
+        '-c',
+        'model_reasoning_effort="low"',
       ]),
     );
     expect(command?.args).not.toContain('--ignore-user-config');
@@ -42,14 +50,14 @@ describe('roleTaskRunner', () => {
 
   it('isolates user config when LIGHTORY_CODEX_MODEL_PROVIDER is configured', () => {
     expect(
-      __test.buildCodexRoleTaskIsolationArgs({
+      buildCodexRoleTaskIsolationArgs({
         LIGHTORY_CODEX_MODEL_PROVIDER: 'local_provider',
       }),
     ).toEqual(['--ignore-user-config']);
   });
 
   it('does not inherit parent Codex runtime environment into role task processes', () => {
-    const env = __test.buildRoleTaskEnv({
+    const env = buildRoleTaskEnv({
       CODEX_SESSION_ID: 'pixel-role-test',
       PWD: '/repo',
     });
@@ -63,10 +71,10 @@ describe('roleTaskRunner', () => {
 
   it('builds Codex config overrides from LIGHTORY_CODEX environment variables', () => {
     expect(
-      __test.buildCodexRoleTaskConfigArgs({
+      buildCodexRoleTaskConfigArgs({
         LIGHTORY_CODEX_MODEL_PROVIDER: 'local_provider',
         LIGHTORY_CODEX_MODEL: 'gpt-test',
-        LIGHTORY_CODEX_REASONING_EFFORT: 'low',
+        LIGHTORY_CODEX_REASONING_EFFORT: 'medium',
         LIGHTORY_CODEX_PROVIDER_NAME: 'Local Provider',
         LIGHTORY_CODEX_PROVIDER_BASE_URL: 'https://example.test/v1',
         LIGHTORY_CODEX_PROVIDER_WIRE_API: 'responses',
@@ -78,7 +86,7 @@ describe('roleTaskRunner', () => {
       '-c',
       'model="gpt-test"',
       '-c',
-      'model_reasoning_effort="low"',
+      'model_reasoning_effort="medium"',
       '-c',
       'model_providers.local_provider.name="Local Provider"',
       '-c',
@@ -87,6 +95,13 @@ describe('roleTaskRunner', () => {
       'model_providers.local_provider.wire_api="responses"',
       '-c',
       'model_providers.local_provider.requires_openai_auth=true',
+    ]);
+  });
+
+  it('defaults Codex role tasks to low reasoning effort for fast console turns', () => {
+    expect(buildCodexRoleTaskConfigArgs({})).toEqual([
+      '-c',
+      'model_reasoning_effort="low"',
     ]);
   });
 

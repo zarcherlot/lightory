@@ -22,6 +22,7 @@ import {
 } from './assetLoader.js';
 import type { AssetCache } from './clientMessageHandler.js';
 import { FileStateAdapter } from './fileStateAdapter.js';
+import { createLlmRoleRunner } from './llmRoleExecutor.js';
 import {
   claudeProvider,
   codexProvider,
@@ -30,11 +31,11 @@ import {
   opencodeProvider,
 } from './providers/index.js';
 import { createRobotIntentPlanner } from './robotIntentPlanner.js';
-import { createExpertMailbox } from './robotTutor/expertMailbox.js';
-import { createLlmRoleRunner } from './robotTutor/llmRoleRunner.js';
-import { createRaceTutorOrchestrator } from './robotTutor/tutorOrchestrator.js';
 import { createRoleTaskRunner } from './roleTaskRunner.js';
 import { LightoryServer } from './server.js';
+import { createRaceConversationRouter } from './teachingScenes/fourPointRace/conversationRouter.js';
+import { createExpertMailbox } from './teachingScenes/fourPointRace/expertMailbox.js';
+import { createFourPointRaceTeachingOrchestrator } from './teachingScenes/fourPointRace/sceneOrchestrator.js';
 
 // ── Argument parsing ──────────────────────────────────────────
 
@@ -145,14 +146,15 @@ async function main(): Promise<void> {
       }
     };
 
-    const llmRoleRunner = createLlmRoleRunner({
+    const llmRunner = createLlmRoleRunner({
       provider,
       cwd: process.cwd(),
     });
-    const raceTutor = createRaceTutorOrchestrator({
-      runner: llmRoleRunner,
-      mailbox: createExpertMailbox({ runner: llmRoleRunner }),
+    const fourPointRaceTeaching = createFourPointRaceTeachingOrchestrator({
+      runner: llmRunner,
+      mailbox: createExpertMailbox({ runner: llmRunner }),
     });
+    const raceConversationRouter = createRaceConversationRouter({ runner: llmRunner });
 
     const config = await server.start({
       store,
@@ -172,8 +174,10 @@ async function main(): Promise<void> {
         provider,
         cwd: process.cwd(),
       }),
+      onRaceConversationRoute: ({ content, raceSessionActive, knownFacts }) =>
+        raceConversationRouter.route({ content, raceSessionActive, knownFacts }),
       onRaceTutorTurn: ({ sessionId, content, knownFacts }) =>
-        raceTutor.handleTurn({ sessionId, childMessage: content, knownFacts }),
+        fourPointRaceTeaching.handleTurn({ sessionId, childMessage: content, knownFacts }),
     });
     currentConfig = { port: config.port, token: config.token };
 

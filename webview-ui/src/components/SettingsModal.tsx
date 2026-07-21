@@ -171,6 +171,17 @@ export function SettingsModal({
           />
         </label>
         <label className="block px-10 py-4 text-2xs text-text-muted">
+          Map ID
+          <input
+            className="mt-2 w-full bg-bg-dark border-2 border-border px-6 py-4 text-xs text-text outline-none focus:border-accent"
+            value={draftRobotConfig.mapId}
+            onChange={(event) =>
+              setDraftRobotConfig((prev) => ({ ...prev, mapId: event.target.value }))
+            }
+            disabled={draftRobotConfig.mode === 'mock'}
+          />
+        </label>
+        <label className="block px-10 py-4 text-2xs text-text-muted">
           Token
           <input
             className="mt-2 w-full bg-bg-dark border-2 border-border px-6 py-4 text-xs text-text outline-none focus:border-accent"

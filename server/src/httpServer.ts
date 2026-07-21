@@ -10,6 +10,7 @@ import type { AgentStateStore } from './agentStateStore.js';
 import type {
   AssetCache,
   PlanRobotIntentSideEffect,
+  RaceConversationRouteSideEffect,
   RaceTutorTurnSideEffect,
   SetHooksEnabledSideEffect,
   StartRoleTaskSideEffect,
@@ -44,6 +45,8 @@ export interface HttpServerOptions {
   onStartRoleTask?: StartRoleTaskSideEffect;
   /** Invoked when the browser needs free-form robot text converted into a restricted intent. */
   onPlanRobotIntent?: PlanRobotIntentSideEffect;
+  /** Invoked when the browser needs semantic routing before robot/tutor handling. */
+  onRaceConversationRoute?: RaceConversationRouteSideEffect;
   /** Invoked when the browser sends a four-point race tutor turn. */
   onRaceTutorTurn?: RaceTutorTurnSideEffect;
 }
@@ -202,6 +205,7 @@ function registerWebSocketRoute(app: FastifyInstance, options: HttpServerOptions
           onSetHooksEnabled: options.onSetHooksEnabled,
           onStartRoleTask: options.onStartRoleTask,
           onPlanRobotIntent: options.onPlanRobotIntent,
+          onRaceConversationRoute: options.onRaceConversationRoute,
           onRaceTutorTurn: options.onRaceTutorTurn,
         });
       } catch {

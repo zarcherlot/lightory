@@ -4,7 +4,10 @@ import type { LoadedAssets, LoadedCharacterSprites, LoadedPetSprites } from './a
 import { readConfig, writeConfig } from './configPersistence.js';
 import { readLayoutFromFile, writeLayoutToFile } from './layoutPersistence.js';
 import { claudeProvider } from './providers/index.js';
-import type { RaceTutorTurnResult } from './robotTutor/schemas.js';
+import type {
+  RaceConversationRouteDecision,
+} from './teachingScenes/fourPointRace/conversationRouter.js';
+import type { RaceTutorTurnResult } from './teachingScenes/fourPointRace/schemas.js';
 
 type WsSend = (message: Record<string, unknown>) => void;
 export interface RoleTaskInputCard {
@@ -36,6 +39,12 @@ export type RaceTutorTurnSideEffect = (request: {
   content: string;
   knownFacts?: Record<string, unknown>;
 }) => Promise<RaceTutorTurnResult>;
+export type RaceConversationRouteSideEffect = (request: {
+  requestId: string;
+  content: string;
+  raceSessionActive?: boolean;
+  knownFacts?: Record<string, unknown>;
+}) => Promise<RaceConversationRouteDecision>;
 
 /** Cached assets loaded at server startup. Sent to each WebSocket client on webviewReady. */
 export interface AssetCache {
@@ -57,6 +66,8 @@ export interface ClientMessageContext {
   onStartRoleTask?: StartRoleTaskSideEffect;
   /** Convert free-form robot commands into a restricted RobotIntent object. */
   onPlanRobotIntent?: PlanRobotIntentSideEffect;
+  /** Semantically route console input between the race tutor and robot planning. */
+  onRaceConversationRoute?: RaceConversationRouteSideEffect;
   /** Advance the four-point race AI tutor conversation. */
   onRaceTutorTurn?: RaceTutorTurnSideEffect;
 }
@@ -195,6 +206,53 @@ export function handleClientMessage(
         } catch (error) {
           send({
             type: 'robotIntentPlanResult',
+            requestId,
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      })();
+      break;
+    }
+
+    case 'raceConversationRouteInput': {
+      const requestId = typeof msg.requestId === 'string' ? msg.requestId : '';
+      const content = typeof msg.content === 'string' ? msg.content.trim() : '';
+      const raceSessionActive = msg.raceSessionActive === true;
+      const knownFacts =
+        msg.knownFacts && typeof msg.knownFacts === 'object' && !Array.isArray(msg.knownFacts)
+          ? (msg.knownFacts as Record<string, unknown>)
+          : undefined;
+      if (!requestId || !content) break;
+      void (async () => {
+        try {
+          const result = await ctx.onRaceConversationRoute?.({
+            requestId,
+            content,
+            raceSessionActive,
+            knownFacts,
+          });
+          if (!result) {
+            send({
+              type: 'raceConversationRouteResult',
+              requestId,
+              ok: false,
+              error: 'Race conversation router is unavailable.',
+            });
+            return;
+          }
+          send({
+            type: 'raceConversationRouteResult',
+            requestId,
+            ok: true,
+            speakerRole: result.speakerRole,
+            route: result.route,
+            confidence: result.confidence,
+            reason: result.reason,
+          });
+        } catch (error) {
+          send({
+            type: 'raceConversationRouteResult',
             requestId,
             ok: false,
             error: error instanceof Error ? error.message : String(error),

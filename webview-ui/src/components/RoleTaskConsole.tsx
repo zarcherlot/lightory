@@ -2,15 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { getRoleDefinition } from '../roles.js';
 import { transport } from '../transport/index.js';
-
-export interface RoleTaskConsoleEntry {
-  id: number;
-  runId: string;
-  roleId: string;
-  status: 'started' | 'running' | 'done' | 'error';
-  stream: 'system' | 'stdout' | 'stderr';
-  content: string;
-}
+import type { RoleTaskConsoleEntry } from './roleTaskConsoleTypes.js';
 
 export interface ConsoleRoleOption {
   id: string;
@@ -201,7 +193,7 @@ function ConsoleMessage({ entry }: { entry: RoleTaskConsoleEntry }) {
       <div className={`flex max-w-[82%] flex-col gap-3 ${isUser ? 'items-end' : 'items-start'}`}>
         {!isUser && (
           <div
-            className={`px-2 text-[13px] leading-none ${
+            className={`px-2 text-xs leading-tight [font-family:system-ui,-apple-system,BlinkMacSystemFont,'Noto_Sans_SC','Microsoft_YaHei',sans-serif] ${
               entry.stream === 'stderr' ? 'text-status-error' : 'text-text-muted'
             }`}
           >

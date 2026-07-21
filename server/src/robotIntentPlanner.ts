@@ -1,8 +1,5 @@
-import { spawn } from 'child_process';
-import * as fs from 'fs';
-
 import type { HookProvider } from '../../core/src/provider.js';
-import { buildRoleTaskCommand } from './roleTaskRunner.js';
+import { executeLlmRolePrompt } from './llmRoleExecutor.js';
 
 const ROBOT_INTENT_TIMEOUT_MS = 90_000;
 const MAX_SEQUENCE_ACTIONS = 100;
@@ -32,71 +29,21 @@ export type RobotIntentPlanResult =
 export function createRobotIntentPlanner(options: RobotIntentPlannerOptions) {
   return async (request: RobotIntentPlanRequest): Promise<RobotIntentPlanResult> => {
     const prompt = buildRobotIntentPrompt(request.content, request.tools);
-    const command = buildRoleTaskCommand(
-      options.provider,
+    const result = await executeLlmRolePrompt({
+      provider: options.provider,
+      cwd: options.cwd,
+      runId: `robot-intent-${request.requestId}`,
       prompt,
-      options.cwd,
-      `robot-intent-${request.requestId}`,
-    );
-    if (!command) {
-      return { ok: false, error: `Provider ${options.provider.displayName} cannot plan robot intents.` };
-    }
-
-    return new Promise((resolve) => {
-      const child = spawn(command.command, command.args, {
-        cwd: options.cwd,
-        env: command.env ?? process.env,
-        shell: false,
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
-      let stdout = '';
-      let stderr = '';
-      let settled = false;
-      const timeout = setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        child.kill();
-        resolve({ ok: false, error: 'Robot intent planner timed out.' });
-      }, ROBOT_INTENT_TIMEOUT_MS);
-
-      if (command.input !== undefined) child.stdin.end(command.input);
-      else child.stdin.end();
-
-      child.stdout.on('data', (chunk: Buffer) => {
-        stdout += chunk.toString();
-      });
-      child.stderr.on('data', (chunk: Buffer) => {
-        stderr += chunk.toString();
-      });
-      child.on('error', (error) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timeout);
-        resolve({ ok: false, error: `Failed to start robot intent planner: ${error.message}` });
-      });
-      child.on('close', (code) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timeout);
-        const output = readOutput(command.outputPath) || stdout.trim();
-        cleanupOutput(command.outputPath);
-        if (code !== 0) {
-          resolve({ ok: false, error: stderr.trim() || output || `Planner exited with code ${code}.` });
-          return;
-        }
-        const parsed = parsePlannerJson(output);
-        if (!parsed) {
-          resolve({ ok: false, error: 'Planner returned non-JSON output.' });
-          return;
-        }
-        const validation = validatePlannerIntent(parsed);
-        if (validation) {
-          resolve({ ok: false, error: validation });
-          return;
-        }
-        resolve({ ok: true, intent: parsed });
-      });
+      timeoutMs: ROBOT_INTENT_TIMEOUT_MS,
+      timeoutError: 'Robot intent planner timed out.',
+      unavailableError: `Provider ${options.provider.displayName} cannot plan robot intents.`,
     });
+    if (!result.ok) return { ok: false, error: result.error };
+    const parsed = parsePlannerJson(result.output);
+    if (!parsed) return { ok: false, error: 'Planner returned non-JSON output.' };
+    const validation = validatePlannerIntent(parsed);
+    if (validation) return { ok: false, error: validation };
+    return { ok: true, intent: parsed };
   };
 }
 
@@ -117,6 +64,8 @@ function buildRobotIntentPrompt(content: string, tools: Array<Record<string, unk
     '{"type":"velocityProfile","intent":"short Chinese intent","segments":[{"linearX":number,"angularZ":number,"durationMs":number}]}',
     '{"type":"sequence","intent":"short Chinese intent","confirmationMessage":"polite Chinese confirmation question","actions":[{"type":"driveDistance","distanceMeters":number,"maxSpeedMps":number},{"type":"rotateAngle","angleRad":number,"maxAngularRadps":number},{"type":"velocityProfile","intent":"short Chinese intent","segments":[{"linearX":number,"angularZ":number,"durationMs":number}]}]}',
     '{"type":"reactive","intent":"short Chinese intent","confirmationMessage":"polite Chinese confirmation question","graph":{"durationMs":number,"sources":[{"id":"mic","type":"audio.microphone","args":{}}],"processors":[{"id":"beat","type":"audio.beatTracker","input":"mic","args":{}}],"outputs":[{"id":"base","type":"base.motionReactive","input":"beat","args":{"style":"dance","maxSpeedMps":number,"maxAngularRadps":number}},{"id":"led","type":"led.reactivePattern","input":"beat","args":{"style":"cheerful"}}],"safety":{"requiresLease":["base"],"stopOnObstacle":true,"startupNoInputMs":number,"stopOnSilenceMs":number,"maxSpeedMps":number,"maxAngularRadps":number}}}',
+    '{"type":"raceLap","trackId":"default-abcd","order":["A","B","C","D","A"],"strategy":{"maxSpeedMps":number,"lookaheadMeters":number,"waypointToleranceM":number,"headingKp":number,"maxAngularRadps":number},"safety":{"frontStopDistanceMeters":number,"maxDurationMs":number},"confirmationMessage":"polite Chinese confirmation question"}',
+    '{"type":"raceRecordPoint","name":"A|B|C|D"}',
     '{"type":"speech","text":"short text"}',
     '{"type":"led","mode":"short mode"}',
     '{"type":"rememberPoi","poiName":"place name"}',
@@ -140,6 +89,10 @@ function buildRobotIntentPrompt(content: string, tools: Array<Record<string, unk
     '- Each velocityProfile segment must have abs(linearX) <= 0.5, abs(angularZ) <= 0.785398, durationMs > 0.',
     '- Total velocityProfile duration must be <= 20000ms.',
     '- Prefer conservative speeds and short durations.',
+    '- Use raceLap for explicit four-point race execution, one-lap test runs, default-abcd race runs, or developer test mode requests to run A/B/C/D.',
+    '- raceLap order must be the closed route ["A","B","C","D","A"]. Default trackId is "default-abcd".',
+    '- For raceLap MVP, prefer maxSpeedMps 0.12 unless the user explicitly asks to optimize speed. Include confirmationMessage because it moves the real robot.',
+    '- Use raceRecordPoint when the user says the robot is currently at A/B/C/D, asks to remember A/B/C/D, or says 到A点了 / 现在是A点 / 这里是A点. Do not use rememberPoi for A/B/C/D race points.',
     '- Do not reject a compound movement just because it combines multiple tools; return sequence.',
     '- Do not reject a 3m-style long distance just because one tool call is shorter; return sequence or driveDistance with a friendly confirmationMessage.',
     '- If the request is physically risky, ambiguous, or unusually long, still return a safe candidate with confirmationMessage when possible.',
@@ -164,6 +117,10 @@ function buildRobotIntentPrompt(content: string, tools: Array<Record<string, unk
     'JSON: {"type":"sequence","intent":"前进2米、后退1米、旋转1圈","confirmationMessage":"我理解为先前进2米，再后退1米，最后原地旋转1圈。这个动作幅度比较大，请确认小车已架空或周围安全后再执行。","actions":[{"type":"driveDistance","distanceMeters":2,"maxSpeedMps":0.2},{"type":"driveDistance","distanceMeters":-1,"maxSpeedMps":0.2},{"type":"rotateAngle","angleRad":6.283185307,"maxAngularRadps":0.349066}]}',
     'User: 让小车进3m退2m再打个圈儿',
     'JSON: {"type":"sequence","intent":"前进3米、后退2米、旋转1圈","confirmationMessage":"我会把前进3米拆成安全的分段动作，然后后退2米并旋转1圈。请确认小车已架空或测试区域足够安全后再继续。","actions":[{"type":"driveDistance","distanceMeters":3,"maxSpeedMps":0.2},{"type":"driveDistance","distanceMeters":-2,"maxSpeedMps":0.2},{"type":"rotateAngle","angleRad":6.283185307,"maxAngularRadps":0.349066}]}',
+    'User: 我是开发工程师，使用已有 default-abcd 控制小车跑一圈',
+    'JSON: {"type":"raceLap","trackId":"default-abcd","order":["A","B","C","D","A"],"strategy":{"maxSpeedMps":0.12,"lookaheadMeters":0.22,"waypointToleranceM":0.16,"headingKp":1.2,"maxAngularRadps":0.5},"safety":{"frontStopDistanceMeters":0.15,"maxDurationMs":45000},"confirmationMessage":"开发测试模式：我会使用已有 default-abcd，按 A-B-C-D-A 发起一圈试跑。请确认小车在 A 点附近、赛道安全后执行。"}',
+    'User: 现在就是在A点，可以记住',
+    'JSON: {"type":"raceRecordPoint","name":"A"}',
     '',
     `User command: ${content}`,
   ].join('\n');
@@ -225,7 +182,58 @@ function validatePlannerIntent(intent: Record<string, unknown>): string | null {
     if (typeof intent.intent !== 'string' || !intent.intent.trim()) return 'reactive requires intent.';
     return validateReactiveGraph(intent.graph);
   }
+  if (type === 'raceLap') return validateRaceLap(intent);
+  if (type === 'raceRecordPoint') return validateRacePointName(intent.name);
   return 'Unsupported planner intent type.';
+}
+
+function validateRacePointName(raw: unknown): string | null {
+  return raw === 'A' || raw === 'B' || raw === 'C' || raw === 'D'
+    ? null
+    : 'raceRecordPoint name must be A, B, C, or D.';
+}
+
+function validateRaceLap(intent: Record<string, unknown>): string | null {
+  if (intent.trackId !== undefined && (typeof intent.trackId !== 'string' || !intent.trackId.trim())) {
+    return 'raceLap trackId must be a non-empty string.';
+  }
+  if (intent.order !== undefined) {
+    if (!Array.isArray(intent.order) || intent.order.length !== 5) {
+      return 'raceLap order must contain five closed route points.';
+    }
+    const order = intent.order.map(String);
+    if (
+      !order.every((point) => point === 'A' || point === 'B' || point === 'C' || point === 'D') ||
+      order[0] !== order[4]
+    ) {
+      return 'raceLap order must be closed A/B/C/D route.';
+    }
+  }
+  if (intent.strategy !== undefined) {
+    if (!intent.strategy || typeof intent.strategy !== 'object' || Array.isArray(intent.strategy)) {
+      return 'raceLap strategy must be an object.';
+    }
+    const strategy = intent.strategy as Record<string, unknown>;
+    if (!validOptionalPositiveNumber(strategy.maxSpeedMps, MAX_LINEAR_SPEED_MPS)) {
+      return `raceLap maxSpeedMps must be >0 and <=${MAX_LINEAR_SPEED_MPS}.`;
+    }
+    if (!validOptionalPositiveNumber(strategy.maxAngularRadps, MAX_ANGULAR_SPEED_RADPS)) {
+      return `raceLap maxAngularRadps must be >0 and <=${MAX_ANGULAR_SPEED_RADPS}.`;
+    }
+  }
+  if (intent.safety !== undefined) {
+    if (!intent.safety || typeof intent.safety !== 'object' || Array.isArray(intent.safety)) {
+      return 'raceLap safety must be an object.';
+    }
+    const safety = intent.safety as Record<string, unknown>;
+    if (!validOptionalPositiveNumber(safety.frontStopDistanceMeters, 2)) {
+      return 'raceLap frontStopDistanceMeters must be >0 and <=2.';
+    }
+    if (!validOptionalPositiveNumber(safety.maxDurationMs, MAX_REACTIVE_DURATION_MS)) {
+      return `raceLap maxDurationMs must be >0 and <=${MAX_REACTIVE_DURATION_MS}.`;
+    }
+  }
+  return null;
 }
 
 function validateSequenceAction(action: Record<string, unknown>): string | null {
@@ -391,18 +399,4 @@ function validPositiveNumber(value: unknown): boolean {
 
 function validOptionalPositiveNumber(value: unknown, absLimit: number): boolean {
   return value === undefined || validPositiveNumber(value) && Number(value) <= absLimit;
-}
-
-function readOutput(outputPath: string | undefined): string {
-  if (!outputPath || !fs.existsSync(outputPath)) return '';
-  return fs.readFileSync(outputPath, 'utf8').trim();
-}
-
-function cleanupOutput(outputPath: string | undefined): void {
-  if (!outputPath) return;
-  try {
-    fs.rmSync(outputPath, { force: true });
-  } catch {
-    // Best effort cleanup only.
-  }
 }

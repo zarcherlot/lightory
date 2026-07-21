@@ -7,15 +7,22 @@ import {
   type LocalizationInitialPoseArgs,
   type LocalizationRecordPoseArgs,
   type PoiUpsertArgs,
-  type RacePreviewArgs,
   type RaceRunLapArgs,
+  type RaceSafety,
+  type RaceStrategy,
   type RaceTrackRef,
   type RaceTrackSaveArgs,
 } from './types.js';
 
+type NormalizedRaceRunLapArgs = Omit<RaceRunLapArgs, 'strategy' | 'safety'> & {
+  strategy: RaceStrategy;
+  safety: RaceSafety;
+};
+
 export interface RaceBuildContext {
   padId: string;
   sessionId: string;
+  mapId?: string;
 }
 
 export function buildRaceRunLapPlan(ctx: RaceBuildContext, args: RaceRunLapArgs): RobotPlan {
@@ -30,7 +37,7 @@ export function buildRaceRunLapPlan(ctx: RaceBuildContext, args: RaceRunLapArgs)
       {
         id: 's1',
         tool: 'race.runLap',
-        args: normalized,
+        args: toPlanArgs(normalized),
         timeoutMs: normalized.safety.maxDurationMs + 1000,
         safety: {
           requiresLease: 'base',
@@ -51,14 +58,6 @@ export function buildRaceRunLapPlan(ctx: RaceBuildContext, args: RaceRunLapArgs)
   );
 }
 
-export function buildRacePreviewLapPlan(ctx: RaceBuildContext, args: RacePreviewArgs): RobotPlan {
-  return createRaceToolPlan(ctx, 'plan_race_preview', `预览四点赛道 ${args.trackId}`, 'race.previewLap', {
-    trackId: args.trackId,
-    order: args.order ?? DEFAULT_RACE_ORDER,
-    ...(args.strategy ? { strategy: { ...DEFAULT_RACE_STRATEGY, ...args.strategy } } : {}),
-  });
-}
-
 export function buildLocalizationHealthPlan(ctx: RaceBuildContext): RobotPlan {
   return createRaceToolPlan(ctx, 'plan_localization_health', '检查定位状态', 'localization.health', {});
 }
@@ -76,7 +75,7 @@ export function buildSetInitialPosePlan(
     'plan_localization_initial_pose',
     '设置小车初始位姿',
     'localization.setInitialPose',
-    args,
+    toPlanArgs(args),
     'medium',
   );
 }
@@ -85,12 +84,14 @@ export function buildRecordCurrentPosePlan(
   ctx: RaceBuildContext,
   name: LocalizationRecordPoseArgs['name'],
 ): RobotPlan {
+  const args: LocalizationRecordPoseArgs = { name };
+  if (ctx.mapId?.trim()) args.mapId = ctx.mapId.trim();
   return createRaceToolPlan(
     ctx,
     'plan_localization_record_pose',
     `记录赛道点 ${name}`,
     'localization.recordCurrentPose',
-    { name },
+    toPlanArgs(args),
     'medium',
   );
 }
@@ -100,7 +101,15 @@ export function buildPoiListPlan(ctx: RaceBuildContext): RobotPlan {
 }
 
 export function buildPoiUpsertPlan(ctx: RaceBuildContext, args: PoiUpsertArgs): RobotPlan {
-  return createRaceToolPlan(ctx, 'plan_poi_upsert', `保存赛道点 ${args.name}`, 'poi.upsert', args, 'medium');
+  const normalized = withContextMapId(ctx, args);
+  return createRaceToolPlan(
+    ctx,
+    'plan_poi_upsert',
+    `保存赛道点 ${args.name}`,
+    'poi.upsert',
+    toPlanArgs(normalized),
+    'medium',
+  );
 }
 
 export function buildPoiGetPlan(ctx: RaceBuildContext, name: string): RobotPlan {
@@ -112,18 +121,25 @@ export function buildPoiDeletePlan(ctx: RaceBuildContext, name: string): RobotPl
 }
 
 export function buildRaceTrackSavePlan(ctx: RaceBuildContext, args: RaceTrackSaveArgs): RobotPlan {
+  const normalized = withContextMapId(ctx, args);
   return createRaceToolPlan(
     ctx,
     'plan_race_track_save',
     `保存四点赛道 ${args.trackId}`,
     'race.track.save',
-    args,
+    toPlanArgs(normalized),
     'medium',
   );
 }
 
 export function buildRaceTrackGetPlan(ctx: RaceBuildContext, args: RaceTrackRef): RobotPlan {
-  return createRaceToolPlan(ctx, 'plan_race_track_get', `读取四点赛道 ${args.trackId}`, 'race.track.get', args);
+  return createRaceToolPlan(
+    ctx,
+    'plan_race_track_get',
+    `读取四点赛道 ${args.trackId}`,
+    'race.track.get',
+    toPlanArgs(args),
+  );
 }
 
 export function buildRaceTrackListPlan(ctx: RaceBuildContext): RobotPlan {
@@ -136,7 +152,7 @@ export function buildRaceTrackClearPlan(ctx: RaceBuildContext, args: RaceTrackRe
     'plan_race_track_clear',
     `清空四点赛道 ${args.trackId}`,
     'race.track.clear',
-    args,
+    toPlanArgs(args),
     'medium',
   );
 }
@@ -149,7 +165,13 @@ export function buildLidarCheckSafetyPlan(
   ctx: RaceBuildContext,
   args: LidarCheckSafetyArgs = {},
 ): RobotPlan {
-  return createRaceToolPlan(ctx, 'plan_lidar_check_safety', '检查赛道前方安全距离', 'lidar.checkSafety', args);
+  return createRaceToolPlan(
+    ctx,
+    'plan_lidar_check_safety',
+    '检查赛道前方安全距离',
+    'lidar.checkSafety',
+    toPlanArgs(args),
+  );
 }
 
 export function buildRaceStatusPlan(ctx: RaceBuildContext): RobotPlan {
@@ -213,13 +235,23 @@ function createRacePlan(
   };
 }
 
-function normalizeRunLapArgs(args: RaceRunLapArgs): Required<RaceRunLapArgs> {
+function normalizeRunLapArgs(args: RaceRunLapArgs): NormalizedRaceRunLapArgs {
   return {
     trackId: args.trackId.trim(),
+    ...(args.mapId?.trim() ? { mapId: args.mapId.trim() } : {}),
     order: args.order ?? DEFAULT_RACE_ORDER,
     strategy: { ...DEFAULT_RACE_STRATEGY, ...args.strategy },
     safety: { ...DEFAULT_RACE_SAFETY, ...args.safety },
-  };
+  } as NormalizedRaceRunLapArgs;
+}
+
+function toPlanArgs<T extends object>(args: T): Record<string, unknown> {
+  return { ...args } as Record<string, unknown>;
+}
+
+function withContextMapId<T extends { mapId?: string }>(ctx: RaceBuildContext, args: T): T {
+  if (args.mapId?.trim() || !ctx.mapId?.trim()) return args;
+  return { ...args, mapId: ctx.mapId.trim() };
 }
 
 function slugify(value: string): string {

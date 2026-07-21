@@ -162,6 +162,7 @@ class POIStore:
         missing = [point for point in point_names if point not in track['points']]
         if missing:
             raise ValueError(f'Missing race points: {", ".join(missing)}.')
+        validate_track_points_same_map(track, point_names, map_id)
         now = now_iso()
         track['name'] = name
         track['order'] = point_names
@@ -258,6 +259,18 @@ def validate_map_pose(pose: Any) -> None:
 def validate_point_name(name: str) -> None:
     if name not in {'A', 'B', 'C', 'D'}:
         raise ValueError('MVP race point name must be A, B, C, or D.')
+
+
+def validate_track_points_same_map(track: Dict[str, Any], point_names: List[str], map_id: str) -> None:
+    points = track.get('points') if isinstance(track.get('points'), dict) else {}
+    mismatched = []
+    for name in point_names:
+        point = points.get(name)
+        point_map_id = point.get('mapId') if isinstance(point, dict) else None
+        if point_map_id != map_id:
+            mismatched.append(f'{name}:{point_map_id or "missing"}')
+    if mismatched:
+        raise ValueError(f'Race track points must be recorded on the same map {map_id}: {", ".join(mismatched)}.')
 
 
 def now_iso() -> str:

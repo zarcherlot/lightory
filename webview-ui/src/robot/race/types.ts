@@ -26,15 +26,10 @@ export interface RaceSafety {
 
 export interface RaceRunLapArgs {
   trackId: string;
+  mapId?: string;
   order: RaceLapOrder;
   strategy?: Partial<RaceStrategy>;
   safety?: Partial<RaceSafety>;
-}
-
-export interface RacePreviewArgs {
-  trackId: string;
-  order?: RaceLapOrder;
-  strategy?: Partial<RaceStrategy>;
 }
 
 export interface RaceTrackRef {
@@ -49,6 +44,7 @@ export interface RaceTrackSaveArgs extends RaceTrackRef {
 export interface PoiUpsertArgs {
   name: RacePointName | string;
   pose: RacePose;
+  mapId?: string;
   aliases?: string[];
   source?: 'child' | 'agent' | 'operator';
 }
@@ -60,6 +56,7 @@ export interface LocalizationInitialPoseArgs {
 
 export interface LocalizationRecordPoseArgs {
   name: RacePointName | string;
+  mapId?: string;
 }
 
 export interface LidarCheckSafetyArgs {
@@ -88,13 +85,6 @@ export interface LidarSnapshot {
   scanAgeMs?: number;
 }
 
-export interface RacePreview {
-  trackId: string;
-  route: string[];
-  estimatedDistanceMeters?: number;
-  summary?: string;
-}
-
 export interface RaceResult {
   trackId: string;
   status: 'done' | 'stopped' | 'unsafe' | 'failed';
@@ -114,6 +104,6 @@ export const DEFAULT_RACE_STRATEGY: RaceStrategy = {
 };
 
 export const DEFAULT_RACE_SAFETY: RaceSafety = {
-  frontStopDistanceMeters: 0.35,
+  frontStopDistanceMeters: 0.15,
   maxDurationMs: 120000,
 };

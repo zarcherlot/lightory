@@ -35,6 +35,7 @@ export type ServerMessage =
   | RoleTaskConsole
   | RoleTaskStatus
   | RobotIntentPlanResult
+  | RaceConversationRouteResult
   | RaceTutorOutput
   | AgentDiagnostics;
 
@@ -43,6 +44,7 @@ export type ClientMessage =
   | StartRoleTask
   | ConsoleUserInput
   | PlanRobotIntent
+  | RaceConversationRouteInput
   | RaceTutorInput
   | FocusAgent
   | CloseAgent
@@ -297,27 +299,46 @@ export interface RobotIntentPlanResult {
   error?: string;
 }
 
+export interface RaceConversationRouteResult {
+  type: 'raceConversationRouteResult';
+  requestId: string;
+  ok: boolean;
+  speakerRole?: AnonymousSchema_180;
+  route?: AnonymousSchema_181;
+  confidence?: number;
+  reason?: string;
+  error?: string;
+}
+
+export type AnonymousSchema_180 = 'child' | 'developer' | 'operator' | 'unknown';
+
+export type AnonymousSchema_181 =
+  | 'ai_tutor'
+  | 'robot_execution'
+  | 'robot_tool_planning'
+  | 'general_robot_intent';
+
 export interface RaceTutorOutput {
   type: 'raceTutorOutput';
   requestId: string;
   sessionId: string;
   ok: boolean;
   publicReply?: string;
-  expertReplies?: AnonymousSchema_183[];
-  suggestedRobotAction?: AnonymousSchema_186;
+  expertReplies?: AnonymousSchema_191[];
+  suggestedRobotAction?: AnonymousSchema_194;
   raceDraftPatch?: Record<string, any>;
   error?: string;
-  expertNotes?: AnonymousSchema_190[];
+  expertNotes?: AnonymousSchema_198[];
 }
 
-export interface AnonymousSchema_183 {
+export interface AnonymousSchema_191 {
   expertId: string;
   publicReply: string;
 }
 
-export type AnonymousSchema_186 = 'none' | 'record_point' | 'preview_lap' | 'run_lap';
+export type AnonymousSchema_194 = 'none' | 'record_point' | 'run_lap';
 
-export interface AnonymousSchema_190 {
+export interface AnonymousSchema_198 {
   expertId: string;
   note: string;
 }
@@ -361,6 +382,14 @@ export interface PlanRobotIntent {
   requestId: string;
   content: string;
   tools: Record<string, any>[];
+}
+
+export interface RaceConversationRouteInput {
+  type: 'raceConversationRouteInput';
+  requestId: string;
+  content: string;
+  raceSessionActive?: boolean;
+  knownFacts?: Record<string, any>;
 }
 
 export interface RaceTutorInput {

@@ -8,7 +8,6 @@ import {
   buildPoiGetPlan,
   buildPoiListPlan,
   buildPoiUpsertPlan,
-  buildRacePreviewLapPlan,
   buildRaceRunLapPlan,
   buildRaceStatusPlan,
   buildRaceStopPlan,
@@ -25,7 +24,6 @@ import type {
   LocalizationInitialPoseArgs,
   PoiUpsertArgs,
   RacePointName,
-  RacePreviewArgs,
   RaceRunLapArgs,
   RaceToolPlanResult,
   RaceTrackRef,
@@ -48,7 +46,6 @@ export interface RaceRobotClient {
   getLidarSnapshot(): Promise<RaceToolPlanResult>;
   checkSafety(args?: LidarCheckSafetyArgs): Promise<RaceToolPlanResult>;
   getRaceStatus(): Promise<RaceToolPlanResult>;
-  previewLap(args: RacePreviewArgs): Promise<RaceToolPlanResult>;
   runLap(args: RaceRunLapArgs): Promise<RaceToolPlanResult>;
   stopRace(reason?: string): Promise<RaceToolPlanResult>;
 }
@@ -76,7 +73,6 @@ export function createRaceClient(api: RobotApiClient, ctx: RaceBuildContext): Ra
     getLidarSnapshot: () => submit(buildLidarSnapshotPlan(ctx)),
     checkSafety: (args = {}) => submit(buildLidarCheckSafetyPlan(ctx, args)),
     getRaceStatus: () => submit(buildRaceStatusPlan(ctx)),
-    previewLap: (args) => submit(buildRacePreviewLapPlan(ctx, args)),
     runLap: (args) => submit(buildRaceRunLapPlan(ctx, args)),
     stopRace: (reason) => submit(buildRaceStopPlan(ctx, reason)),
   };

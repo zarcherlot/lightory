@@ -4,21 +4,29 @@ import assert from 'node:assert/strict';
 
 import { test } from 'vitest';
 
-import type { ClientMessage, ServerMessage } from '../../../core/src/messages.js';
-import type { MessageTransport } from '../../../core/src/transport.js';
+import type { ClientMessage, ServerMessage } from '../../core/src/messages.js';
+import type { MessageTransport } from '../../core/src/transport.js';
 import { presentRaceTutorOutput } from '../src/robot/education/consolePresenter.js';
 import {
   createRaceSessionState,
   detectFourPointRaceIntent,
 } from '../src/robot/education/raceSession.js';
-import { createRaceTutorRuntime } from '../src/robot/education/tutorRuntime.js';
+import {
+  createRaceRecordPointIntentFromTutorOutput,
+  createRaceTutorRuntime,
+} from '../src/robot/education/tutorRuntime.js';
 import {
   getMockRobotTools,
   MockRobotApiClient,
   MockRobotEventBus,
 } from '../src/robot/mockRobotApi.js';
 import { createRaceClient } from '../src/robot/race/raceClient.js';
-import { buildRaceRunLapPlan } from '../src/robot/race/racePlanBuilder.js';
+import {
+  buildPoiUpsertPlan,
+  buildRaceRunLapPlan,
+  buildRaceTrackListPlan,
+  buildRaceTrackSavePlan,
+} from '../src/robot/race/racePlanBuilder.js';
 import {
   buildDriveDistancePlan,
   buildMoveToPoiPlan,
@@ -29,6 +37,11 @@ import {
 } from '../src/robot/robotPlanBuilder.js';
 import { validateRobotPlanLocally } from '../src/robot/robotPlanSchema.js';
 import type { RobotApiEnvelope, RobotEvent, RobotPlan } from '../src/robot/types.js';
+import {
+  createEmptyRaceKnownFacts,
+  createRaceKnownFactsFromTrackList,
+  updateRaceKnownFactsFromRobotEvent,
+} from '../src/robot/useRobotRuntime.js';
 import { HttpVideoStreamClient, MockVideoStreamClient } from '../src/robot/videoStreamClient.js';
 
 const ctx = { padId: 'test-pad', sessionId: 'test-session' };
@@ -137,6 +150,86 @@ test('normalizes model-planned robot intents and rejects unsafe values', () => {
     type: 'unsupported',
     reason: '太危险',
   });
+});
+
+test('normalizes four-point race lap intents into a high-risk run-lap plan', () => {
+  const outcome = normalizeRobotIntent({
+    type: 'raceLap',
+    trackId: 'default-abcd',
+    order: ['A', 'B', 'C', 'D', 'A'],
+    strategy: { maxSpeedMps: 0.12 },
+    safety: { maxDurationMs: 45000 },
+    confirmationMessage: '请确认赛道安全后开始一圈试跑。',
+  });
+
+  assert.equal(outcome.type, 'planned');
+  assert.equal(
+    outcome.type === 'planned' ? outcome.confirmationMessage : '',
+    '请确认赛道安全后开始一圈试跑。',
+  );
+  const plan = outcome.type === 'planned' ? buildPlanForIntent(ctx, outcome.intent) : null;
+  assert.equal(plan?.requiresUserConfirmation, true);
+  assert.equal(plan?.steps[0]?.tool, 'race.runLap');
+  assert.equal(plan?.steps[1]?.tool, 'race.stop');
+  assert.equal(plan?.steps[0]?.args.trackId, 'default-abcd');
+  assert.deepEqual(plan?.steps[0]?.args.order, ['A', 'B', 'C', 'D', 'A']);
+  assert.equal(
+    (plan?.steps[0]?.args.strategy as { maxSpeedMps?: number } | undefined)?.maxSpeedMps,
+    0.12,
+  );
+  assert.equal(
+    (plan?.steps[0]?.args.safety as { frontStopDistanceMeters?: number } | undefined)
+      ?.frontStopDistanceMeters,
+    0.15,
+  );
+  assert.equal(
+    (plan?.steps[0]?.args.safety as { maxDurationMs?: number } | undefined)?.maxDurationMs,
+    45000,
+  );
+  assert.equal(validateRobotPlanLocally(plan!, getMockRobotTools()).ok, true);
+});
+
+test('normalizes race point recording phrases into localization record plans', () => {
+  assert.deepEqual(parseRobotIntent('现在就是在A点，可以记住'), {
+    type: 'raceRecordPoint',
+    name: 'A',
+  });
+
+  const outcome = normalizeRobotIntent({ type: 'raceRecordPoint', name: 'B' });
+  assert.equal(outcome.type, 'planned');
+  const plan = outcome.type === 'planned' ? buildPlanForIntent(ctx, outcome.intent) : null;
+
+  assert.equal(plan?.steps[0]?.tool, 'localization.recordCurrentPose');
+  assert.deepEqual(plan?.steps[0]?.args, { name: 'B' });
+  assert.equal(validateRobotPlanLocally(plan!, getMockRobotTools()).ok, true);
+});
+
+test('race point recording plans carry the active map id', () => {
+  const outcome = normalizeRobotIntent({ type: 'raceRecordPoint', name: 'B' });
+  assert.equal(outcome.type, 'planned');
+  const plan =
+    outcome.type === 'planned'
+      ? buildPlanForIntent({ ...ctx, mapId: 'map_02' }, outcome.intent)
+      : null;
+
+  assert.equal(plan?.steps[0]?.tool, 'localization.recordCurrentPose');
+  assert.deepEqual(plan?.steps[0]?.args, { name: 'B', mapId: 'map_02' });
+  assert.equal(validateRobotPlanLocally(plan!, getMockRobotTools()).ok, true);
+});
+
+test('race save and poi upsert plans inherit the active map id', () => {
+  const mapCtx = { ...ctx, mapId: 'map_02' };
+  const savePlan = buildRaceTrackSavePlan(mapCtx, {
+    trackId: 'default-abcd',
+    pointNames: ['A', 'B', 'C', 'D'],
+  });
+  const upsertPlan = buildPoiUpsertPlan(mapCtx, {
+    name: 'A',
+    pose: { frame: 'map', x: 0, y: 0, thetaRad: 0 },
+  });
+
+  assert.equal(savePlan.steps[0]?.args.mapId, 'map_02');
+  assert.equal(upsertPlan.steps[0]?.args.mapId, 'map_02');
 });
 
 test('normalizes compound movement into a multi-step sequence plan', () => {
@@ -363,7 +456,7 @@ test('builds and validates a high-risk four-point race lap plan', () => {
       finishRadiusMeters: 0.22,
     },
     safety: {
-      frontStopDistanceMeters: 0.35,
+      frontStopDistanceMeters: 0.15,
       maxDurationMs: 120000,
     },
   });
@@ -407,13 +500,6 @@ test('race client submits typed race and localization tool plans', async () => {
   assert.equal(upsertPoint.plan.steps[0]?.tool, 'poi.upsert');
   assert.equal(upsertPoint.validation.ok, true);
 
-  const preview = await raceClient.previewLap({
-    trackId: 'default-abcd',
-    order: ['A', 'B', 'C', 'D', 'A'],
-  });
-  assert.equal(preview.plan.steps[0]?.tool, 'race.previewLap');
-  assert.equal(preview.validation.ok, true);
-
   const runLap = await raceClient.runLap({
     trackId: 'default-abcd',
     order: ['A', 'B', 'C', 'D', 'A'],
@@ -429,8 +515,9 @@ test('detects four-point race session intent from child console input', () => {
   assert.equal(detectFourPointRaceIntent('让小车前进2m'), false);
 });
 
-test('presents only child-facing race tutor and expert replies', () => {
+test('presents AI tutor and expert public replies without leaking internal notes', () => {
   const entries = presentRaceTutorOutput({
+    type: 'raceTutorOutput',
     requestId: 'req-1',
     sessionId: 'race-session-1',
     ok: true,
@@ -451,19 +538,22 @@ test('presents only child-facing race tutor and expert replies', () => {
     [
       '先想想：记录 A 点时，小车要保存什么？',
       '我是定位工程师。地图坐标能帮小车再找到 A 点。',
-      '赛道草稿：下一步记录 A 点。',
     ],
   );
+  assert.equal(entries.some((entry) => entry.content.includes('赛道草稿')), false);
   assert.equal(entries.some((entry) => entry.content.includes('hidden note')), false);
   assert.equal(entries.some((entry) => entry.content.includes('debug')), false);
+  assert.deepEqual(entries.map((entry) => entry.roleId), ['AI老师', '定位工程师']);
 });
 
 test('race tutor runtime sends active session turns to tutor instead of robot intent planner', async () => {
   const transport = new TestTransport();
   const entries: Array<{ content: string; roleId: string }> = [];
+  const suggestedRobotActions: string[] = [];
   const runtime = createRaceTutorRuntime({
     transport,
     appendEntry: (entry) => entries.push({ content: entry.content, roleId: entry.roleId }),
+    onSuggestedRobotAction: (action) => suggestedRobotActions.push(action),
     now: () => 1000,
     randomId: () => 'fixed',
   });
@@ -475,18 +565,407 @@ test('race tutor runtime sends active session turns to tutor instead of robot in
     '我今天想完成4点竞速赛',
   );
 
-  transport.emit({
+  const legacyTutorOutput = {
     type: 'raceTutorOutput',
     requestId: transport.sent[0]?.type === 'raceTutorInput' ? transport.sent[0].requestId : '',
     sessionId: 'race-session-1000-fixed',
     ok: true,
     publicReply: '我们先记录 A 点。你觉得定位要用地图还是只靠轮子？',
     expertReplies: [{ expertId: 'localization', publicReply: '定位工程师：AMCL 会把雷达和地图对齐。' }],
-    suggestedRobotAction: 'none',
+    suggestedRobotAction: 'preview_lap',
+  } as unknown as ServerMessage;
+
+  transport.emit(legacyTutorOutput);
+
+  await waitFor(() => entries.some((entry) => entry.roleId === 'AI老师'));
+  assert.deepEqual(entries.map((entry) => entry.roleId), ['user', 'AI老师', '定位工程师']);
+  assert.equal(entries.some((entry) => entry.content.includes('AMCL')), true);
+  assert.deepEqual(suggestedRobotActions, []);
+});
+
+test('race tutor runtime includes caller-provided race facts in tutor input', () => {
+  const transport = new TestTransport();
+  const runtime = createRaceTutorRuntime({
+    transport,
+    appendEntry: () => {},
+    getKnownFacts: () => ({
+      race: {
+        track: { trackId: 'default-abcd', recordedPoints: ['A', 'B', 'C', 'D'] },
+        latestLap: { status: 'done', elapsedMs: 12345 },
+      },
+    }),
   });
 
-  await waitFor(() => entries.some((entry) => entry.content.includes('AMCL')));
-  assert.deepEqual(entries.map((entry) => entry.roleId), ['user', 'race-tutor', 'race-localization']);
+  runtime.handleTutorInput('路标点都录好了，刚才也跑完一圈了');
+
+  const sent = transport.sent[0];
+  assert.equal(sent?.type, 'raceTutorInput');
+  assert.deepEqual(sent?.type === 'raceTutorInput' ? sent.knownFacts?.race : undefined, {
+    track: { trackId: 'default-abcd', recordedPoints: ['A', 'B', 'C', 'D'] },
+    latestLap: { status: 'done', elapsedMs: 12345 },
+  });
+});
+
+test('mock robot tool list does not expose race preview lap', async () => {
+  const bus = new MockRobotEventBus();
+  const client = new MockRobotApiClient(bus);
+
+  const tools = await client.getTools();
+
+  assert.equal(tools.some((tool) => tool.name === 'race.previewLap'), false);
+});
+
+test('extracts tutor-proposed race lap strategy from race draft patches', async () => {
+  const { createRaceLapIntentFromTutorOutput } = await import('../src/robot/education/tutorRuntime.js');
+
+  const intent = createRaceLapIntentFromTutorOutput({
+    type: 'raceTutorOutput',
+    requestId: 'req-1',
+    sessionId: 'race-session-1',
+    ok: true,
+    suggestedRobotAction: 'run_lap',
+    raceDraftPatch: {
+      runLap: {
+        strategy: { maxSpeedMps: 0.16, lookaheadMeters: 0.3 },
+        safety: { frontStopDistanceMeters: 0.15, maxDurationMs: 50000 },
+      },
+    },
+  });
+
+  assert.equal(intent.strategy?.maxSpeedMps, 0.16);
+  assert.equal(intent.strategy?.lookaheadMeters, 0.3);
+  assert.equal(intent.safety?.frontStopDistanceMeters, 0.15);
+  assert.equal(intent.safety?.maxDurationMs, 50000);
+});
+
+test('uses known saved race track id instead of an invented tutor track id', async () => {
+  const { createRaceLapIntentFromTutorOutput } = await import('../src/robot/education/tutorRuntime.js');
+
+  const intent = createRaceLapIntentFromTutorOutput(
+    {
+      type: 'raceTutorOutput',
+      requestId: 'req-1',
+      sessionId: 'race-session-1',
+      ok: true,
+      suggestedRobotAction: 'run_lap',
+      raceDraftPatch: {
+        runLap: {
+          trackId: 'saved_abcd_track',
+          strategy: { maxSpeedMps: 0.16 },
+        },
+      },
+    },
+    {
+      race: {
+        track: { trackId: 'default-abcd', recordedPoints: ['A', 'B', 'C', 'D'] },
+      },
+    },
+  );
+
+  assert.equal(intent.trackId, 'default-abcd');
+  assert.equal(intent.strategy?.maxSpeedMps, 0.16);
+});
+
+test('converts tutor record-point suggestions into robot intents', () => {
+  const recordIntent = createRaceRecordPointIntentFromTutorOutput({
+    type: 'raceTutorOutput',
+    requestId: 'req-record',
+    sessionId: 'race-session-1',
+    ok: true,
+    suggestedRobotAction: 'record_point',
+    raceDraftPatch: { nextPoint: 'B' },
+  });
+  assert.deepEqual(recordIntent, { type: 'raceRecordPoint', name: 'B' });
+});
+
+test('does not default missing tutor record-point target to A', () => {
+  const recordIntent = createRaceRecordPointIntentFromTutorOutput({
+    type: 'raceTutorOutput',
+    requestId: 'req-record-missing-point',
+    sessionId: 'race-session-1',
+    ok: true,
+    suggestedRobotAction: 'record_point',
+  });
+  assert.equal(recordIntent, null);
+});
+
+test('race known facts capture latest run-lap robot result without deciding teaching flow', () => {
+  const plan = buildRaceRunLapPlan(ctx, {
+    trackId: 'default-abcd',
+    order: ['A', 'B', 'C', 'D', 'A'],
+    strategy: { maxSpeedMps: 0.32, lookaheadMeters: 0.42 },
+  });
+  const result: RobotApiEnvelope<{ status: string; elapsedMs: number }> = {
+    schemaVersion: 'robot-api/v1',
+    ok: true,
+    requestId: 'req-race',
+    status: 'done',
+    message: 'race.runLap done',
+    data: { status: 'done', elapsedMs: 12345 },
+    timing: {
+      startedAt: '2026-07-19T00:00:00.000Z',
+      endedAt: '2026-07-19T00:00:12.345Z',
+      durationMs: 12345,
+    },
+    robot: { robotId: 'r1', hostname: 'robot', softwareVersion: 'test' },
+  };
+
+  const facts = updateRaceKnownFactsFromRobotEvent(
+    createEmptyRaceKnownFacts(),
+    { type: 'plan.step.done', planId: plan.planId, stepId: 's1', result },
+    plan,
+  );
+
+  assert.deepEqual(facts.track, {
+    trackId: 'default-abcd',
+    recordedPoints: ['A', 'B', 'C', 'D'],
+    source: 'race.runLap',
+  });
+  assert.deepEqual(facts.latestLap, {
+    status: 'done',
+    elapsedMs: 12345,
+    trackId: 'default-abcd',
+    order: ['A', 'B', 'C', 'D', 'A'],
+    strategy: {
+      name: 'baseline',
+      maxSpeedMps: 0.32,
+      minTurnSpeedMps: 0.08,
+      lookaheadMeters: 0.42,
+      waypointRadiusMeters: 0.18,
+      finishRadiusMeters: 0.22,
+    },
+    safety: {
+      frontStopDistanceMeters: 0.15,
+      maxDurationMs: 120000,
+    },
+    message: 'race.runLap done',
+  });
+  assert.deepEqual(facts.latestRaceToolResult?.args, {
+    trackId: 'default-abcd',
+    order: ['A', 'B', 'C', 'D', 'A'],
+    strategy: {
+      name: 'baseline',
+      maxSpeedMps: 0.32,
+      minTurnSpeedMps: 0.08,
+      lookaheadMeters: 0.42,
+      waypointRadiusMeters: 0.18,
+      finishRadiusMeters: 0.22,
+    },
+    safety: {
+      frontStopDistanceMeters: 0.15,
+      maxDurationMs: 120000,
+    },
+  });
+  assert.deepEqual(facts.recentRobotEvents.at(-1), {
+    type: 'plan.step.done',
+    tool: 'race.runLap',
+    ok: true,
+    message: 'race.runLap done',
+    args: {
+      trackId: 'default-abcd',
+      order: ['A', 'B', 'C', 'D', 'A'],
+      strategy: {
+        name: 'baseline',
+        maxSpeedMps: 0.32,
+        minTurnSpeedMps: 0.08,
+        lookaheadMeters: 0.42,
+        waypointRadiusMeters: 0.18,
+        finishRadiusMeters: 0.22,
+      },
+      safety: {
+        frontStopDistanceMeters: 0.15,
+        maxDurationMs: 120000,
+      },
+    },
+  });
+});
+
+test('race known facts hydrate saved track list on robot connection', () => {
+  const facts = createRaceKnownFactsFromTrackList({
+    tracks: [
+      {
+        trackId: 'default-abcd',
+        points: {
+          A: { name: 'A' },
+          B: { name: 'B' },
+          C: { name: 'C' },
+          D: { name: 'D' },
+        },
+      },
+    ],
+  });
+
+  assert.deepEqual(facts.track, {
+    trackId: 'default-abcd',
+    recordedPoints: ['A', 'B', 'C', 'D'],
+    source: 'race.track.list',
+  });
+});
+
+test('race known facts capture saved tracks from race.track.list robot result', () => {
+  const plan = buildRaceTrackListPlan(ctx);
+  const result: RobotApiEnvelope<{
+    tracks: Array<{ trackId: string; points: Record<string, unknown> }>;
+  }> = {
+    schemaVersion: 'robot-api/v1',
+    ok: true,
+    requestId: 'req-track-list',
+    status: 'done',
+    message: 'race.track.list done',
+    data: {
+      tracks: [
+        {
+          trackId: 'yesterday-abcd',
+          points: {
+            A: { name: 'A' },
+            B: { name: 'B' },
+            C: { name: 'C' },
+            D: { name: 'D' },
+          },
+        },
+      ],
+    },
+    timing: {
+      startedAt: '2026-07-19T00:00:00.000Z',
+      endedAt: '2026-07-19T00:00:00.100Z',
+      durationMs: 100,
+    },
+    robot: { robotId: 'r1', hostname: 'robot', softwareVersion: 'test' },
+  };
+
+  const facts = updateRaceKnownFactsFromRobotEvent(
+    createEmptyRaceKnownFacts(),
+    { type: 'plan.step.done', planId: plan.planId, stepId: 's1', result },
+    plan,
+  );
+
+  assert.deepEqual(facts.track, {
+    trackId: 'yesterday-abcd',
+    recordedPoints: ['A', 'B', 'C', 'D'],
+    source: 'race.track.list',
+  });
+});
+
+test('race known facts capture recorded points from localization record events', () => {
+  const plan = buildPlanForIntent(ctx, { type: 'raceRecordPoint', name: 'B' });
+  const result: RobotApiEnvelope<{ trackId: string; point: { name: string } }> = {
+    schemaVersion: 'robot-api/v1',
+    ok: true,
+    requestId: 'req-record-point',
+    status: 'done',
+    message: 'localization.recordCurrentPose done',
+    data: { trackId: 'default-abcd', point: { name: 'B' } },
+    timing: {
+      startedAt: '2026-07-19T00:00:00.000Z',
+      endedAt: '2026-07-19T00:00:00.100Z',
+      durationMs: 100,
+    },
+    robot: { robotId: 'r1', hostname: 'robot', softwareVersion: 'test' },
+  };
+
+  const facts = updateRaceKnownFactsFromRobotEvent(
+    {
+      track: { trackId: 'default-abcd', recordedPoints: ['A'], source: 'race.track.list' },
+      recentRobotEvents: [],
+    },
+    { type: 'plan.step.done', planId: plan.planId, stepId: 's1', result },
+    plan,
+  );
+
+  assert.deepEqual(facts.track, {
+    trackId: 'default-abcd',
+    recordedPoints: ['A', 'B'],
+    source: 'localization.recordCurrentPose',
+  });
+});
+
+test('race known facts capture track get, clear, and point delete events', () => {
+  const trackGetPlan = buildPlanForIntent(ctx, { type: 'raceTrackGet', trackId: 'default-abcd' });
+  const trackGetFacts = updateRaceKnownFactsFromRobotEvent(
+    createEmptyRaceKnownFacts(),
+    {
+      type: 'plan.step.done',
+      planId: trackGetPlan.planId,
+      stepId: 's1',
+      result: {
+        schemaVersion: 'robot-api/v1',
+        ok: true,
+        requestId: 'req-track-get',
+        status: 'done',
+        message: 'race.track.get done',
+        data: {
+          track: {
+            trackId: 'default-abcd',
+            points: { A: {}, B: {}, C: {}, D: {} },
+          },
+        },
+        timing: {
+          startedAt: '2026-07-19T00:00:00.000Z',
+          endedAt: '2026-07-19T00:00:00.100Z',
+          durationMs: 100,
+        },
+        robot: { robotId: 'r1', hostname: 'robot', softwareVersion: 'test' },
+      },
+    },
+    trackGetPlan,
+  );
+  assert.deepEqual(trackGetFacts.track, {
+    trackId: 'default-abcd',
+    recordedPoints: ['A', 'B', 'C', 'D'],
+    source: 'race.track.get',
+  });
+
+  const deletePlan = buildPlanForIntent(ctx, { type: 'raceDeletePoint', name: 'B' });
+  const deleteFacts = updateRaceKnownFactsFromRobotEvent(
+    trackGetFacts,
+    {
+      type: 'plan.step.done',
+      planId: deletePlan.planId,
+      stepId: 's1',
+      result: {
+        schemaVersion: 'robot-api/v1',
+        ok: true,
+        requestId: 'req-delete',
+        status: 'done',
+        message: 'poi.delete done',
+        data: { trackId: 'default-abcd', name: 'B', deleted: true },
+        timing: {
+          startedAt: '2026-07-19T00:00:00.000Z',
+          endedAt: '2026-07-19T00:00:00.100Z',
+          durationMs: 100,
+        },
+        robot: { robotId: 'r1', hostname: 'robot', softwareVersion: 'test' },
+      },
+    },
+    deletePlan,
+  );
+  assert.deepEqual(deleteFacts.track?.recordedPoints, ['A', 'C', 'D']);
+
+  const clearPlan = buildPlanForIntent(ctx, { type: 'raceTrackClear', trackId: 'default-abcd' });
+  const clearFacts = updateRaceKnownFactsFromRobotEvent(
+    deleteFacts,
+    {
+      type: 'plan.step.done',
+      planId: clearPlan.planId,
+      stepId: 's1',
+      result: {
+        schemaVersion: 'robot-api/v1',
+        ok: true,
+        requestId: 'req-clear',
+        status: 'done',
+        message: 'race.track.clear done',
+        data: { trackId: 'default-abcd', deleted: true },
+        timing: {
+          startedAt: '2026-07-19T00:00:00.000Z',
+          endedAt: '2026-07-19T00:00:00.100Z',
+          durationMs: 100,
+        },
+        robot: { robotId: 'r1', hostname: 'robot', softwareVersion: 'test' },
+      },
+    },
+    clearPlan,
+  );
+  assert.equal(clearFacts.track, undefined);
 });
 
 test('race tutor runtime ignores non-race input before a race session is active', () => {
@@ -575,6 +1054,7 @@ test('http video stream client starts video through robot-api/v1 envelope', asyn
       mode: 'real',
       baseUrl: 'https://robot.local',
       robotId: 'robot-1',
+      mapId: 'map_01',
       token: 'session-token',
       certificateFingerprint: 'sha256/test',
     });
@@ -633,6 +1113,7 @@ test('http video stream client queries and stops active video streams', async ()
       mode: 'real',
       baseUrl: 'https://robot.local',
       robotId: 'robot-1',
+      mapId: 'map_01',
       token: 'session-token',
       certificateFingerprint: 'sha256/test',
     });

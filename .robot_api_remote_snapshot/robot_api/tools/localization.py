@@ -58,7 +58,7 @@ TOOLS: List[Dict[str, Any]] = [
             'properties': {
                 'name': {'type': 'string'},
                 'trackId': {'type': 'string'},
-                'mapId': {'type': 'string'},
+                'mapId': {'type': 'string', 'default': 'map_01'},
             },
             'additionalProperties': False,
         },

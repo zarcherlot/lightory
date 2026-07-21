@@ -5,6 +5,7 @@ export interface RobotConnectionConfig {
   mode: 'mock' | 'real';
   baseUrl: string;
   robotId: string;
+  mapId: string;
   token: string;
   certificateFingerprint: string;
 }

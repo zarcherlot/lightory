@@ -173,6 +173,23 @@ def test_record_current_pose_dispatches_to_poi_store(tmp_path):
     assert service.poi_store.get_poi("A")["point"]["pose"]["x"] == 3.0
 
 
+def test_save_track_rejects_points_from_mixed_maps(tmp_path):
+    import pytest
+    from robot_api.tools.poi import POIStore
+
+    store = POIStore(tmp_path / "race_tracks.json")
+    for name, x, y, map_id in [
+        ("A", 0, 0, "map_02"),
+        ("B", 1, 0, "map_01"),
+        ("C", 1, 1, "map_02"),
+        ("D", 0, 1, "map_02"),
+    ]:
+        store.upsert_poi(name, {"frame": "map", "x": x, "y": y, "thetaRad": 0.0}, "default-abcd", map_id)
+
+    with pytest.raises(ValueError, match="same map"):
+        store.save_track("default-abcd", "ABCD", ["A", "B", "C", "D"], "map_02")
+
+
 def test_lidar_sector_snapshot_filters_invalid_ranges():
     from robot_api.tools.lidar import compute_lidar_snapshot
 
@@ -276,6 +293,69 @@ def test_race_controller_command_slows_for_large_heading_error():
     assert turn["angularZ"] > 0
 
 
+def test_race_controller_uses_lookahead_as_waypoint_arrival_radius():
+    import asyncio
+    from robot_api.race.controller import RaceController
+
+    route = [
+        {"name": "A", "x": 0.0, "y": 0.0, "thetaRad": 0.0},
+        {"name": "B", "x": 1.0, "y": 0.0, "thetaRad": 0.0},
+        {"name": "C", "x": 1.0, "y": 1.0, "thetaRad": 0.0},
+        {"name": "D", "x": 0.0, "y": 1.0, "thetaRad": 0.0},
+        {"name": "A", "x": 0.0, "y": 0.0, "thetaRad": 0.0},
+    ]
+    ros = ScriptedRaceRos([
+        {"x": 0.0, "y": 0.0, "thetaRad": 0.0},
+        {"x": 0.7, "y": 0.0, "thetaRad": 1.57},
+        {"x": 1.0, "y": 0.7, "thetaRad": 3.14},
+        {"x": 0.3, "y": 1.0, "thetaRad": -1.57},
+        {"x": 0.0, "y": 0.0, "thetaRad": 0.0},
+    ])
+    controller = RaceController(ros)
+
+    result = asyncio.run(controller.run_lap(
+        "default-abcd",
+        route,
+        {"lookaheadMeters": 0.35, "waypointRadiusMeters": 0.18, "finishRadiusMeters": 0.22},
+        {"frontStopDistanceMeters": 0.15, "maxDurationMs": 1000},
+    ))
+
+    assert result["status"] == "done"
+    assert result["stopReason"] == "finished"
+    assert result["segments"] == [{"to": "B"}, {"to": "C"}, {"to": "D"}]
+
+
+def test_race_controller_finishes_when_final_a_is_reached_on_last_segment():
+    import asyncio
+    from robot_api.race.controller import RaceController
+
+    route = [
+        {"name": "A", "x": 0.0, "y": 0.0, "thetaRad": 0.0},
+        {"name": "B", "x": 1.0, "y": 0.0, "thetaRad": 0.0},
+        {"name": "C", "x": 1.0, "y": 1.0, "thetaRad": 0.0},
+        {"name": "D", "x": 0.0, "y": 1.0, "thetaRad": 0.0},
+        {"name": "A", "x": 0.0, "y": 0.0, "thetaRad": 0.0},
+    ]
+    ros = ScriptedRaceRos([
+        {"x": 0.0, "y": 0.0, "thetaRad": 0.0},
+        {"x": 0.7, "y": 0.0, "thetaRad": 1.57},
+        {"x": 1.0, "y": 0.7, "thetaRad": 3.14},
+        {"x": 0.3, "y": 1.0, "thetaRad": -1.57},
+        {"x": 0.0, "y": 0.0, "thetaRad": 0.0},
+    ])
+    controller = RaceController(ros)
+
+    result = asyncio.run(controller.run_lap(
+        "default-abcd",
+        route,
+        {"lookaheadMeters": 0.35, "waypointRadiusMeters": 0.18, "finishRadiusMeters": 0.22},
+        {"frontStopDistanceMeters": 0.15, "maxDurationMs": 1000},
+    ))
+
+    assert result["status"] == "done"
+    assert result["stopReason"] == "finished"
+
+
 def test_race_preview_tool_reads_saved_track(tmp_path):
     import asyncio
     from robot_api.executor import RobotApiService
@@ -294,6 +374,49 @@ def test_race_preview_tool_reads_saved_track(tmp_path):
     assert result["trackId"] == "default-abcd"
     assert result["route"]["totalDistanceMeters"] == 4.0
     assert "提前看向下一个点" in result["childSummary"]
+
+
+def test_race_run_lap_rejects_track_points_from_mixed_maps(tmp_path):
+    import asyncio
+    import json
+    import pytest
+    from robot_api.executor import RobotApiService
+    from robot_api.tools.poi import POIStore
+
+    store_path = tmp_path / "race_tracks.json"
+    points = {}
+    for name, x, y, map_id in [
+        ("A", 0, 0, "map_02"),
+        ("B", 1, 0, "map_01"),
+        ("C", 1, 1, "map_01"),
+        ("D", 0, 1, "map_01"),
+    ]:
+        points[name] = {
+            "name": name,
+            "mapId": map_id,
+            "pose": {"frame": "map", "x": x, "y": y, "thetaRad": 0.0},
+        }
+    store_path.write_text(json.dumps({
+        "schemaVersion": "race-poi-store/v1",
+        "tracks": {
+            "default-abcd": {
+                "trackId": "default-abcd",
+                "name": "ABCD",
+                "mapId": "map_02",
+                "order": ["A", "B", "C", "D"],
+                "points": points,
+                "lastLapResults": [],
+            }
+        },
+    }), encoding="utf-8")
+
+    service = RobotApiService(FakeRos())
+    service.poi_store = POIStore(store_path)
+    service.poi_tools.store = service.poi_store
+    service.race_tools.poi_store = service.poi_store
+
+    with pytest.raises(ValueError, match="same map"):
+        asyncio.run(service.execute_step({"tool": "race.runLap", "args": {"trackId": "default-abcd", "mapId": "map_02"}}))
 
 
 class FakeRos:
@@ -326,3 +449,18 @@ class FakeRos:
             "right": {"minDistanceMeters": 0.8},
             "scanAgeMs": 10,
         }
+
+
+class ScriptedRaceRos(FakeRos):
+    def __init__(self, poses):
+        super().__init__()
+        self.poses = list(poses)
+        self.velocity_commands = []
+
+    def lookup_map_pose(self):
+        if len(self.poses) > 1:
+            return self.poses.pop(0)
+        return self.poses[0]
+
+    def publish_velocity(self, linear_x, angular_z):
+        self.velocity_commands.append({"linearX": linear_x, "angularZ": angular_z})

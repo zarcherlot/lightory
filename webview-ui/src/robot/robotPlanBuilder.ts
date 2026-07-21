@@ -1,8 +1,18 @@
+import {
+  buildPoiDeletePlan,
+  buildRaceRunLapPlan,
+  buildRaceTrackClearPlan,
+  buildRaceTrackGetPlan,
+  buildRecordCurrentPosePlan,
+} from './race/racePlanBuilder.js';
+import type { RaceLapOrder, RaceRunLapArgs } from './race/types.js';
+import { DEFAULT_RACE_ORDER } from './race/types.js';
 import type { RobotPlan, RobotPlanStep, RobotRisk } from './types.js';
 
 interface BuildContext {
   padId: string;
   sessionId: string;
+  mapId?: string;
 }
 
 const MAX_DRIVE_DISTANCE_PER_STEP_METERS = 2;
@@ -391,7 +401,18 @@ export type RobotIntent =
       segments: Array<{ linearX: number; angularZ: number; durationMs: number }>;
     }
   | { type: 'sequence'; intent: string; actions: RobotSequenceAction[] }
-  | { type: 'reactive'; intent: string; graph: ReactiveGraph };
+  | { type: 'reactive'; intent: string; graph: ReactiveGraph }
+  | {
+      type: 'raceLap';
+      trackId: string;
+      order?: RaceLapOrder;
+      strategy?: RaceRunLapArgs['strategy'];
+      safety?: RaceRunLapArgs['safety'];
+    }
+  | { type: 'raceRecordPoint'; name: string }
+  | { type: 'raceTrackGet'; trackId: string }
+  | { type: 'raceTrackClear'; trackId: string }
+  | { type: 'raceDeletePoint'; name: string };
 
 export type RobotIntentPlannerOutcome =
   | { type: 'planned'; intent: RobotIntent; confirmationMessage?: string }
@@ -461,6 +482,12 @@ export function normalizeRobotIntent(raw: unknown): RobotIntentPlannerOutcome {
       ? { type: 'planned', intent: { type: 'rememberPoi', poiName: intent.poiName.trim() } }
       : { type: 'error', message: 'rememberPoi requires poiName.' };
   }
+  if (intent.type === 'raceRecordPoint') {
+    const name = normalizeRacePointName(intent.name);
+    return name
+      ? { type: 'planned', intent: { type: 'raceRecordPoint', name } }
+      : { type: 'error', message: 'raceRecordPoint name must be A, B, C, or D.' };
+  }
   if (intent.type === 'moveToPoi') {
     return typeof intent.poiName === 'string' && intent.poiName.trim()
       ? { type: 'planned', intent: { type: 'moveToPoi', poiName: intent.poiName.trim() } }
@@ -508,6 +535,23 @@ export function normalizeRobotIntent(raw: unknown): RobotIntentPlannerOutcome {
       ? plannedOutcome({ type: 'reactive', intent: intent.intent.trim(), graph: graph.graph }, intent)
       : { type: 'error', message: graph.message };
   }
+  if (intent.type === 'raceLap') {
+    const trackId = typeof intent.trackId === 'string' && intent.trackId.trim()
+      ? intent.trackId.trim()
+      : 'default-abcd';
+    const order = normalizeRaceOrder(intent.order);
+    if (!order) return { type: 'error', message: 'raceLap order must be A-B-C-D-A style.' };
+    return plannedOutcome(
+      {
+        type: 'raceLap',
+        trackId,
+        order,
+        strategy: normalizeRaceStrategy(intent.strategy),
+        safety: normalizeRaceSafety(intent.safety),
+      },
+      intent,
+    );
+  }
   return { type: 'error', message: 'Planner returned an unsupported intent type.' };
 }
 
@@ -523,6 +567,19 @@ export function parseRobotIntent(input: string): RobotIntent | null {
         { linearX: 0.15, angularZ: 0.7, durationMs: 4500 },
         { linearX: 0.15, angularZ: -0.7, durationMs: 4500 },
       ],
+    };
+  }
+
+  if (
+    /(?:四点|竞速|计时赛|default-abcd|abcd)/iu.test(normalized) &&
+    /(?:跑一圈|跑一次|试跑|发起|执行|开始|run|lap)/iu.test(normalized)
+  ) {
+    return {
+      type: 'raceLap',
+      trackId: 'default-abcd',
+      order: DEFAULT_RACE_ORDER,
+      strategy: { maxSpeedMps: /快|fast/iu.test(normalized) ? 0.2 : 0.12 },
+      safety: { maxDurationMs: 45_000 },
     };
   }
 
@@ -560,7 +617,19 @@ export function parseRobotIntent(input: string): RobotIntent | null {
   }
 
   const remember = text.match(/^这里是(.+)$/u) ?? text.match(/^这是(.+)$/u);
+  if (remember?.[1]) {
+    const racePoint = normalizeRacePointName(remember[1]);
+    if (racePoint) return { type: 'raceRecordPoint', name: racePoint };
+  }
   if (remember?.[1]) return { type: 'rememberPoi', poiName: remember[1].trim() };
+
+  const currentRacePoint =
+    normalized.match(/(?:现在(?:就是)?在|当前在|到|到了|记录|记住)([abcd])点?/iu) ??
+    normalized.match(/([abcd])点(?:到了|可以记住|记住|记录)/iu);
+  if (currentRacePoint?.[1]) {
+    const racePoint = normalizeRacePointName(currentRacePoint[1]);
+    if (racePoint) return { type: 'raceRecordPoint', name: racePoint };
+  }
 
   const move = text.match(/^去(.+)$/u) ?? text.match(/^移动到(.+)$/u) ?? text.match(/^前往(.+)$/u);
   if (move?.[1]) return { type: 'moveToPoi', poiName: move[1].trim() };
@@ -587,7 +656,90 @@ export function buildPlanForIntent(ctx: BuildContext, intent: RobotIntent): Robo
   }
   if (intent.type === 'sequence') return buildSequencePlan(ctx, intent.intent, intent.actions);
   if (intent.type === 'reactive') return buildReactivePlan(ctx, intent.intent, intent.graph);
+  if (intent.type === 'raceRecordPoint') return buildRecordCurrentPosePlan(ctx, intent.name);
+  if (intent.type === 'raceTrackGet') return buildRaceTrackGetPlan(ctx, intent);
+  if (intent.type === 'raceTrackClear') return buildRaceTrackClearPlan(ctx, intent);
+  if (intent.type === 'raceDeletePoint') return buildPoiDeletePlan(ctx, intent.name);
+  if (intent.type === 'raceLap') {
+    return buildRaceRunLapPlan(ctx, {
+      trackId: intent.trackId,
+      ...(ctx.mapId?.trim() ? { mapId: ctx.mapId.trim() } : {}),
+      order: intent.order ?? DEFAULT_RACE_ORDER,
+      strategy: intent.strategy,
+      safety: intent.safety,
+    });
+  }
   return buildVelocityProfilePlan(ctx, intent.intent, intent.segments);
+}
+
+function normalizeRaceOrder(raw: unknown): RaceLapOrder | null {
+  if (raw === undefined) return DEFAULT_RACE_ORDER;
+  if (!Array.isArray(raw) || raw.length !== 5) return null;
+  const values = raw.map((item) => String(item).toUpperCase());
+  return values.every((item) => item === 'A' || item === 'B' || item === 'C' || item === 'D') &&
+    values[0] === values[4]
+    ? (values as RaceLapOrder)
+    : null;
+}
+
+function normalizeRacePointName(raw: unknown): 'A' | 'B' | 'C' | 'D' | null {
+  if (typeof raw !== 'string') return null;
+  const normalized = raw.trim().replace(/点$/u, '').toUpperCase();
+  return normalized === 'A' || normalized === 'B' || normalized === 'C' || normalized === 'D'
+    ? normalized
+    : null;
+}
+
+function normalizeRaceStrategy(raw: unknown): RaceRunLapArgs['strategy'] {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { maxSpeedMps: 0.12 };
+  const strategy = raw as Record<string, unknown>;
+  return {
+    ...(typeof strategy.name === 'string' && strategy.name.trim()
+      ? { name: strategy.name.trim() }
+      : {}),
+    ...(isFiniteNumber(strategy.maxSpeedMps)
+      ? { maxSpeedMps: Math.min(Math.max(strategy.maxSpeedMps, 0.05), 0.5) }
+      : { maxSpeedMps: 0.12 }),
+    ...(isFiniteNumber(strategy.minTurnSpeedMps)
+      ? { minTurnSpeedMps: Math.min(Math.max(strategy.minTurnSpeedMps, 0.03), 0.5) }
+      : {}),
+    ...(isFiniteNumber(strategy.lookaheadMeters)
+      ? { lookaheadMeters: Math.min(Math.max(strategy.lookaheadMeters, 0.05), 1) }
+      : {}),
+    ...(isFiniteNumber(strategy.waypointRadiusMeters)
+      ? { waypointRadiusMeters: Math.min(Math.max(strategy.waypointRadiusMeters, 0.05), 1) }
+      : {}),
+    ...(isFiniteNumber(strategy.finishRadiusMeters)
+      ? { finishRadiusMeters: Math.min(Math.max(strategy.finishRadiusMeters, 0.05), 1) }
+      : {}),
+    ...(isFiniteNumber(strategy.waypointToleranceM)
+      ? { waypointToleranceM: Math.min(Math.max(strategy.waypointToleranceM, 0.03), 1) }
+      : {}),
+    ...(isFiniteNumber(strategy.headingKp)
+      ? { headingKp: Math.min(Math.max(strategy.headingKp, 0.1), 4) }
+      : {}),
+    ...(isFiniteNumber(strategy.maxAngularRadps)
+      ? { maxAngularRadps: Math.min(Math.max(strategy.maxAngularRadps, 0.1), 0.785398) }
+      : {}),
+  };
+}
+
+function normalizeRaceSafety(raw: unknown): RaceRunLapArgs['safety'] {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { frontStopDistanceMeters: 0.15, maxDurationMs: 45_000 };
+  }
+  const safety = raw as Record<string, unknown>;
+  const frontStopDistanceMeters = isFiniteNumber(safety.frontStopDistanceMeters)
+    ? safety.frontStopDistanceMeters
+    : isFiniteNumber(safety.frontStopMeters)
+    ? safety.frontStopMeters
+      : 0.15;
+  return {
+    frontStopDistanceMeters: Math.min(Math.max(frontStopDistanceMeters, 0.15), 2),
+    maxDurationMs: isFiniteNumber(safety.maxDurationMs)
+      ? Math.min(Math.max(Math.round(safety.maxDurationMs), 5_000), 120_000)
+      : 45_000,
+  };
 }
 
 function buildBackwardRampSegments(

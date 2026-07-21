@@ -33,7 +33,18 @@ TOOLS: List[Dict[str, Any]] = [
         'version': '1.0.0',
         'category': 'race',
         'description': 'Run one timed A-B-C-D-A lap using continuous lookahead control.',
-        'inputSchema': {'type': 'object'},
+        'inputSchema': {
+            'type': 'object',
+            'required': ['trackId'],
+            'properties': {
+                'trackId': {'type': 'string', 'default': 'default-abcd'},
+                'mapId': {'type': 'string'},
+                'order': {'type': 'array', 'items': {'type': 'string'}},
+                'strategy': {'type': 'object'},
+                'safety': {'type': 'object'},
+            },
+            'additionalProperties': False,
+        },
         'outputSchema': {'type': 'object'},
         'risk': 'high',
         'requiresConfirmation': True,
@@ -83,6 +94,7 @@ class RaceToolHandlers:
         track_id = str(args.get('trackId', 'default-abcd'))
         order = list(args.get('order', ['A', 'B', 'C', 'D', 'A']))
         track = self.poi_store.get_track(track_id)['track']
+        validate_track_map(track, order, args.get('mapId'))
         route = preview_route(track['points'], order)
         return {
             'trackId': track_id,
@@ -95,6 +107,7 @@ class RaceToolHandlers:
         track_id = str(args.get('trackId', 'default-abcd'))
         order = list(args.get('order', ['A', 'B', 'C', 'D', 'A']))
         track = self.poi_store.get_track(track_id)['track']
+        validate_track_map(track, order, args.get('mapId'))
         route = route_points(track['points'], order)
         return await self.controller.run_lap(
             track_id,
@@ -102,3 +115,18 @@ class RaceToolHandlers:
             {**DEFAULT_STRATEGY, **(args.get('strategy') or {})},
             {**DEFAULT_SAFETY, **(args.get('safety') or {})},
         )
+
+
+def validate_track_map(track: Dict[str, Any], order: List[str], requested_map_id: Any = None) -> None:
+    track_map_id = track.get('mapId')
+    if requested_map_id is not None and str(requested_map_id) != str(track_map_id):
+        raise ValueError(f'Race track map mismatch: requested {requested_map_id}, saved {track_map_id}.')
+    points = track.get('points') if isinstance(track.get('points'), dict) else {}
+    mismatched = []
+    for name in order[:-1]:
+        point = points.get(name)
+        point_map_id = point.get('mapId') if isinstance(point, dict) else None
+        if point_map_id != track_map_id:
+            mismatched.append(f'{name}:{point_map_id or "missing"}')
+    if mismatched:
+        raise ValueError(f'Race track points must be recorded on the same map {track_map_id}: {", ".join(mismatched)}.')

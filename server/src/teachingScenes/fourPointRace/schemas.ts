@@ -1,5 +1,8 @@
+import type { TeachingStudentModel, TeachingStudentModelPatch } from '../../teaching/schemas.js';
+import { createTeachingStudentModel } from '../../teaching/schemas.js';
+
 export type RaceExpertId = 'localization' | 'motion' | 'safety' | 'strategy';
-export type RaceTutorRobotAction = 'none' | 'record_point' | 'preview_lap' | 'run_lap';
+export type RaceTutorRobotAction = 'none' | 'record_point' | 'run_lap';
 
 export interface RaceTutorMention {
   expertId: RaceExpertId;
@@ -7,11 +10,15 @@ export interface RaceTutorMention {
   context: Record<string, unknown>;
 }
 
-export interface TutorTurnOutput {
-  publicReply: string;
-  mentions: RaceTutorMention[];
-  raceDraftPatch?: Record<string, unknown>;
-  suggestedRobotAction: RaceTutorRobotAction;
+export interface RaceTutorDecision {
+  learnerIntent: string;
+  activityState: string;
+  teachingMove: Record<string, unknown>;
+  toolCandidate?: {
+    action: RaceTutorRobotAction;
+    evidence: string[];
+  };
+  responsePlan?: Record<string, unknown>;
 }
 
 export interface ExpertOutput {
@@ -25,7 +32,13 @@ export interface ExpertPublicReply {
   publicReply: string;
 }
 
-export interface RaceTutorTurnResult extends TutorTurnOutput {
+export interface RaceTutorTurnResult {
+  publicReply: string;
+  mentions: RaceTutorMention[];
+  raceDraftPatch?: Record<string, unknown>;
+  suggestedRobotAction: RaceTutorRobotAction;
+  decision?: RaceTutorDecision;
+  studentModelPatch?: TeachingStudentModelPatch;
   expertReplies: ExpertPublicReply[];
   expertNotes?: Array<{ expertId: RaceExpertId; note: string }>;
 }
@@ -40,14 +53,12 @@ export interface RaceTutorSession {
   sessionId: string;
   childGoal?: string;
   recordedPoints: string[];
-  state: 'goal' | 'record_points' | 'preview' | 'run' | 'review';
+  state: 'goal' | 'record_points' | 'run' | 'review';
   childFacingHistory: Array<{ role: 'child' | 'tutor' | 'expert'; content: string }>;
   expertNotes: Array<{ expertId: RaceExpertId; note: string }>;
   raceDraft: Record<string, unknown>;
+  studentModel: TeachingStudentModel;
 }
-
-const expertIds = new Set<RaceExpertId>(['localization', 'motion', 'safety', 'strategy']);
-const robotActions = new Set<RaceTutorRobotAction>(['none', 'record_point', 'preview_lap', 'run_lap']);
 
 export function createRaceTutorSession(sessionId: string): RaceTutorSession {
   return {
@@ -57,21 +68,7 @@ export function createRaceTutorSession(sessionId: string): RaceTutorSession {
     childFacingHistory: [],
     expertNotes: [],
     raceDraft: {},
-  };
-}
-
-export function parseTutorOutput(raw: unknown): TutorTurnOutput {
-  const value = requireRecord(raw, 'Tutor output');
-  const publicReply = requireNonEmptyString(value.publicReply, 'publicReply');
-  const mentions = parseMentions(value.mentions);
-  const suggestedRobotAction = robotActions.has(value.suggestedRobotAction as RaceTutorRobotAction)
-    ? (value.suggestedRobotAction as RaceTutorRobotAction)
-    : 'none';
-  return {
-    publicReply,
-    mentions,
-    ...(isRecord(value.raceDraftPatch) ? { raceDraftPatch: value.raceDraftPatch } : {}),
-    suggestedRobotAction,
+    studentModel: createTeachingStudentModel(),
   };
 }
 
@@ -87,29 +84,8 @@ export function parseExpertOutput(raw: unknown): ExpertOutput {
   };
 }
 
-export function parseTutorOutputJson(output: string): TutorTurnOutput {
-  return parseTutorOutput(parseJsonObject(output, 'Tutor output'));
-}
-
 export function parseExpertOutputJson(output: string): ExpertOutput {
   return parseExpertOutput(parseJsonObject(output, 'Expert output'));
-}
-
-function parseMentions(raw: unknown): RaceTutorMention[] {
-  if (!Array.isArray(raw)) return [];
-  const mentions: RaceTutorMention[] = [];
-  for (const item of raw) {
-    if (!isRecord(item)) continue;
-    if (!expertIds.has(item.expertId as RaceExpertId)) continue;
-    const question = typeof item.question === 'string' ? item.question.trim() : '';
-    if (!question) continue;
-    mentions.push({
-      expertId: item.expertId as RaceExpertId,
-      question,
-      context: isRecord(item.context) ? item.context : {},
-    });
-  }
-  return mentions;
 }
 
 function parseJsonObject(output: string, label: string): Record<string, unknown> {

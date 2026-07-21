@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-import type { RoleTaskConsoleEntry } from '../components/RoleTaskConsole.js';
+import type { RoleTaskConsoleEntry } from '../components/roleTaskConsoleTypes.js';
 import { playDoneSound, playPermissionSound, setSoundEnabled } from '../notificationSound.js';
 import type { OfficeState } from '../office/engine/officeState.js';
 import { setFloorSprites } from '../office/floorTiles.js';

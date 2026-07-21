@@ -1,10 +1,9 @@
-import { spawn } from 'child_process';
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 
 import type { HookProvider } from '../../core/src/provider.js';
 import type { RoleTaskInputCard, RoleTaskOverride } from './clientMessageHandler.js';
+import { buildLlmRoleCommand, executeLlmRolePrompt } from './llmRoleExecutor.js';
 
 type WsSend = (message: Record<string, unknown>) => void;
 
@@ -26,30 +25,10 @@ const ROLE_TASK_FILES: Record<string, string> = {
 };
 const ROLE_TASK_TIMEOUT_MS = 120_000;
 const WEATHER_LOOKUP_TIMEOUT_MS = 6_000;
-const CODEX_ROLE_TASK_ENV = {
-  bin: 'LIGHTORY_CODEX_BIN',
-  modelProvider: 'LIGHTORY_CODEX_MODEL_PROVIDER',
-  model: 'LIGHTORY_CODEX_MODEL',
-  reasoningEffort: 'LIGHTORY_CODEX_REASONING_EFFORT',
-  providerName: 'LIGHTORY_CODEX_PROVIDER_NAME',
-  providerBaseUrl: 'LIGHTORY_CODEX_PROVIDER_BASE_URL',
-  providerWireApi: 'LIGHTORY_CODEX_PROVIDER_WIRE_API',
-  providerRequiresOpenAiAuth: 'LIGHTORY_CODEX_PROVIDER_REQUIRES_OPENAI_AUTH',
-} as const;
-
 export interface RoleTaskRunnerOptions {
   provider: HookProvider;
   rolesDir: string;
   cwd: string;
-}
-
-export interface CommandSpec {
-  command: string;
-  args: string[];
-  env?: Record<string, string>;
-  displayCommand?: string;
-  input?: string;
-  outputPath?: string;
 }
 
 export function createRoleTaskRunner(options: RoleTaskRunnerOptions) {
@@ -88,7 +67,7 @@ export function createRoleTaskRunner(options: RoleTaskRunnerOptions) {
 
     const taskMarkdown = taskOverride?.markdown ?? fs.readFileSync(taskPath, 'utf8');
     const prompt = buildRoleTaskPrompt(roleId, taskMarkdown, inputCards);
-    const command = buildRoleTaskCommand(options.provider, prompt, options.cwd, runId);
+    const command = buildLlmRoleCommand(options.provider, prompt, options.cwd, runId);
     if (!command) {
       emitStatus('error');
       emit({
@@ -101,98 +80,41 @@ export function createRoleTaskRunner(options: RoleTaskRunnerOptions) {
 
     emitStatus('started');
 
-    const child = spawn(command.command, command.args, {
+    void executeLlmRolePrompt({
+      provider: options.provider,
       cwd: options.cwd,
-      env: command.env ?? process.env,
-      shell: false,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-
-    let stdout = '';
-    let stderr = '';
-    let timedOut = false;
-    let settled = false;
-    const timeout = setTimeout(() => {
-      timedOut = true;
-      emitStatus('error');
-      emit({
-        status: 'error',
-        stream: 'stderr',
-        content: `Role task timed out after ${Math.round(ROLE_TASK_TIMEOUT_MS / 1000)} seconds.\n`,
-      });
-      child.kill();
-    }, ROLE_TASK_TIMEOUT_MS);
-
-    if (command.input !== undefined) {
-      child.stdin.end(command.input);
-    } else {
-      child.stdin.end();
-    }
-
-    child.stdout.on('data', (chunk: Buffer) => {
-      stdout += chunk.toString();
-    });
-
-    child.stderr.on('data', (chunk: Buffer) => {
-      const content = chunk.toString();
-      stderr += content;
-      traceRoleTaskStderr(options.provider.id, runId, roleId, content);
-    });
-
-    child.on('error', (error) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      const commandName = command.displayCommand ?? command.command;
-      const hint = errorMessageHasMissingCommand(error)
-        ? missingCommandHint(options.provider.id)
-        : '';
-      emitStatus('error');
-      emit({
-        status: 'error',
-        stream: 'stderr',
-        content: `Failed to start ${commandName}: ${error.message}\n${hint}`,
-      });
-    });
-
-    child.on('close', (code, signal) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      if (timedOut) {
-        cleanupTaskOutput(command.outputPath);
-        return;
-      }
-      const output = readTaskOutput(command.outputPath) || stdout.trim();
+      runId,
+      prompt,
+      timeoutMs: ROLE_TASK_TIMEOUT_MS,
+      timeoutError: `Role task timed out after ${Math.round(ROLE_TASK_TIMEOUT_MS / 1000)} seconds.`,
+      unavailableError: `Provider ${options.provider.displayName} cannot launch role tasks.`,
+      onStderr: (content) => traceRoleTaskStderr(options.provider.id, runId, roleId, content),
+    }).then((result) => {
+      const output = result.ok ? result.output : '';
       const semanticFailure = isRoleTaskFailureOutput(output);
-      const ok = code === 0 && !semanticFailure;
+      const ok = result.ok && !semanticFailure;
       const hint =
-        code === 127 && options.provider.id === 'opencode'
+        !result.ok &&
+        (result.exitCode === 127 || result.errorCode === 'ENOENT') &&
+        options.provider.id === 'opencode'
           ? missingCommandHint(options.provider.id)
           : '';
-      const errorOutput = stderr.trim() || stdout.trim();
       const content =
-        signal !== null
-          ? `Task stopped by signal ${signal}.`
-          : ok
-            ? output
-            : [
-                semanticFailure ? output : errorOutput,
-                semanticFailure
-                  ? 'Task output indicates the role did not complete successfully.'
-                  : '',
-                semanticFailure ? '' : `Task exited with code ${code ?? 'unknown'}.`,
-                hint,
-              ]
-                .filter(Boolean)
-                .join('\n');
+        ok
+          ? output
+          : [
+              semanticFailure ? output : result.ok ? '' : result.error,
+              semanticFailure ? 'Task output indicates the role did not complete successfully.' : '',
+              hint,
+            ]
+              .filter(Boolean)
+              .join('\n');
       emit({
         status: ok ? 'done' : 'error',
         stream: ok ? 'stdout' : 'stderr',
         content: content.endsWith('\n') ? content : `${content}\n`,
       });
       emitStatus(ok ? 'done' : 'error', ok ? inferWeatherIcon(output) : undefined);
-      cleanupTaskOutput(command.outputPath);
     });
   };
 }
@@ -437,134 +359,9 @@ function windSpeedToScale(kmh: number): number {
   return 12;
 }
 
-export function buildRoleTaskCommand(
-  provider: HookProvider,
-  prompt: string,
-  cwd: string,
-  runId: string,
-): CommandSpec | null {
-  switch (provider.id) {
-    case 'claude':
-      return { command: 'claude', args: [prompt] };
-    case 'codex':
-      const codexCommand = process.env[CODEX_ROLE_TASK_ENV.bin] ?? 'codex';
-      const outputPath = path.join(os.tmpdir(), `lightory-${runId}-last-message.txt`);
-      return {
-        command: codexCommand,
-        args: [
-          'exec',
-          ...buildCodexRoleTaskIsolationArgs(),
-          '--color',
-          'never',
-          '--sandbox',
-          'read-only',
-          ...buildCodexRoleTaskConfigArgs(),
-          '--cd',
-          cwd,
-          '--output-last-message',
-          outputPath,
-          '-',
-        ],
-        env: buildRoleTaskEnv({
-          CODEX_SESSION_ID: `pixel-role-${runId}`,
-          LIGHTORY_ROLE_TASK: '1',
-          LIGHTORY_ROLE_TASK_RUN_ID: runId,
-          PWD: cwd,
-        }),
-        input: prompt,
-        outputPath,
-        displayCommand: codexCommand,
-      };
-    case 'opencode':
-      const opencodeCommand = process.env['LIGHTORY_OPENCODE_BIN'] ?? 'opencode';
-      return {
-        command: opencodeCommand,
-        args: ['run', prompt],
-        env: buildRoleTaskEnv({
-          LIGHTORY_ROLE_TASK: '1',
-          LIGHTORY_ROLE_TASK_RUN_ID: runId,
-          PWD: cwd,
-        }),
-        displayCommand: opencodeCommand,
-      };
-    default:
-      return null;
-  }
-}
-
-function buildCodexRoleTaskIsolationArgs(env: NodeJS.ProcessEnv = process.env): string[] {
-  return env[CODEX_ROLE_TASK_ENV.modelProvider] ? ['--ignore-user-config'] : [];
-}
-
-function buildRoleTaskEnv(overrides: Record<string, string>): Record<string, string> {
-  const env: Record<string, string> = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (typeof value === 'string') env[key] = value;
-  }
-  Object.assign(env, overrides);
-  for (const key of Object.keys(env)) {
-    if (key.startsWith('CODEX_') && key !== 'CODEX_SESSION_ID') {
-      delete env[key];
-    }
-  }
-  return env;
-}
-
-function buildCodexRoleTaskConfigArgs(env: NodeJS.ProcessEnv = process.env): string[] {
-  const args: string[] = [];
-  const addConfig = (value: string | undefined, key: string, format = tomlString) => {
-    if (!value) return;
-    args.push('-c', `${key}=${format(value)}`);
-  };
-
-  const providerId = env[CODEX_ROLE_TASK_ENV.modelProvider];
-  addConfig(providerId, 'model_provider');
-  addConfig(env[CODEX_ROLE_TASK_ENV.model], 'model');
-  addConfig(env[CODEX_ROLE_TASK_ENV.reasoningEffort], 'model_reasoning_effort');
-
-  if (providerId) {
-    addConfig(env[CODEX_ROLE_TASK_ENV.providerName], `model_providers.${providerId}.name`);
-    addConfig(env[CODEX_ROLE_TASK_ENV.providerBaseUrl], `model_providers.${providerId}.base_url`);
-    addConfig(env[CODEX_ROLE_TASK_ENV.providerWireApi], `model_providers.${providerId}.wire_api`);
-    addConfig(
-      env[CODEX_ROLE_TASK_ENV.providerRequiresOpenAiAuth],
-      `model_providers.${providerId}.requires_openai_auth`,
-      tomlBoolean,
-    );
-  }
-
-  return args;
-}
-
-function tomlString(value: string): string {
-  return JSON.stringify(value);
-}
-
-function tomlBoolean(value: string): string {
-  return /^(1|true|yes)$/i.test(value) ? 'true' : 'false';
-}
-
-function errorMessageHasMissingCommand(error: Error): boolean {
-  return 'code' in error && (error as NodeJS.ErrnoException).code === 'ENOENT';
-}
-
 function missingCommandHint(providerId: string): string {
   if (providerId !== 'opencode') return '';
   return 'OpenCode CLI was not found. Install it, add it to PATH, set LIGHTORY_OPENCODE_BIN to its absolute path, or restart this server with --provider codex to run role tasks through Codex.\n';
-}
-
-function readTaskOutput(outputPath: string | undefined): string {
-  if (!outputPath || !fs.existsSync(outputPath)) return '';
-  return fs.readFileSync(outputPath, 'utf8').trim();
-}
-
-function cleanupTaskOutput(outputPath: string | undefined): void {
-  if (!outputPath) return;
-  try {
-    fs.rmSync(outputPath, { force: true });
-  } catch {
-    // Best effort cleanup only.
-  }
 }
 
 function inferWeatherIcon(output: string): string {
@@ -584,10 +381,6 @@ function hasAny(text: string, needles: string[]): boolean {
 }
 
 export const __test = {
-  buildCodexRoleTaskConfigArgs,
-  buildCodexRoleTaskIsolationArgs,
-  buildRoleTaskCommand,
-  buildRoleTaskEnv,
   buildRoleTaskPrompt,
   describeWeatherCode,
   formatInputCards,

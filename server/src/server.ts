@@ -8,6 +8,7 @@ import type { AgentStateStore } from './agentStateStore.js';
 import type {
   AssetCache,
   PlanRobotIntentSideEffect,
+  RaceConversationRouteSideEffect,
   RaceTutorTurnSideEffect,
   SetHooksEnabledSideEffect,
 } from './clientMessageHandler.js';
@@ -78,6 +79,7 @@ export class LightoryServer {
     onSetHooksEnabled?: SetHooksEnabledSideEffect;
     onStartRoleTask?: StartRoleTaskSideEffect;
     onPlanRobotIntent?: PlanRobotIntentSideEffect;
+    onRaceConversationRoute?: RaceConversationRouteSideEffect;
     onRaceTutorTurn?: RaceTutorTurnSideEffect;
   }): Promise<ServerConfig> {
     // Check if another instance already has a server running
@@ -108,6 +110,7 @@ export class LightoryServer {
       onSetHooksEnabled: options?.onSetHooksEnabled,
       onStartRoleTask: options?.onStartRoleTask,
       onPlanRobotIntent: options?.onPlanRobotIntent,
+      onRaceConversationRoute: options?.onRaceConversationRoute,
       onRaceTutorTurn: options?.onRaceTutorTurn,
     });
 
